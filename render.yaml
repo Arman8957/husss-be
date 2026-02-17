@@ -1,0 +1,25 @@
+version: "1"
+services:
+  - type: web
+    name: zenith-be
+    runtime: node
+    region: oregon  # or singapore, frankfurt, ohio
+    plan: free
+    branch: main
+    buildCommand: npm ci && npm run render-build
+    startCommand: npm run render-start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.5
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: zenith-db  # if you're creating a DB
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 3000

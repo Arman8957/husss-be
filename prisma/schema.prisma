@@ -1,0 +1,256 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client" 
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+  APPLE
+}
+
+enum UserRole {
+  USER
+  PREMIUM
+  ADMIN
+  MODERATOR
+  SUPPORT
+}
+
+enum TaskFrequency {
+  DAILY
+  WEEKLY
+  CUSTOM
+}
+
+// Models (copy all your models here)
+// ══════════════════════════════════════════════════════════════
+// 1. USER – Auth + Premium + Role-Based Access
+// ══════════════════════════════════════════════════════════════
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  passwordHash  String?
+  avatar        String?
+  googleId      String?   @unique
+  appleId       String?   @unique      
+  firebaseUid   String?   @unique
+  provider      AuthProvider @default(EMAIL)
+  
+  // Role-Based Access Control
+  role          UserRole  @default(USER)
+  permissions   String[]  @default([])
+  
+  // Premium & Trial
+  isPremium     Boolean   @default(false)
+  premiumUntil  DateTime?
+  trialEndsAt   DateTime? @default(dbgenerated("now() + interval '7 days'"))
+  
+  // Stats
+  focusScore    Int       @default(0)
+  streakDays    Int       @default(0)
+  lastActiveDate DateTime?
+  
+  // Account Status
+  isActive      Boolean   @default(true)
+  emailVerified Boolean   @default(false)
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+  
+  // Relations
+  tasks         UserTask[]
+  restrictions  RestrictedApp[]
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  
+  @@index([email])
+  @@index([isPremium])
+  @@index([lastActiveDate])
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 2. SESSION – Track active user sessions (security)
+// ══════════════════════════════════════════════════════════════
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  token        String   @unique
+  deviceInfo   String?
+  ipAddress    String?
+  lastActiveAt DateTime @default(now())
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 3. USER TASKS – Core unlock logic
+// ══════════════════════════════════════════════════════════════
+model UserTask {
+  id            String   @id @default(cuid())
+  userId        String
+  taskName      String
+  isCompleted   Boolean  @default(false)
+  
+  // Dates
+  date          DateTime
+  scheduledTime String?
+  completedAt   DateTime?
+  
+  // Recurrence
+  frequency     TaskFrequency @default(DAILY)
+  customDays    Int[]    @default([])
+  
+  // Metadata
+  notes         String?
+  priority      Int      @default(0)
+  
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, taskName, date])
+  @@index([userId, date])
+  @@index([userId, isCompleted, date])
+  @@index([userId, completedAt])
+  @@map("user_tasks")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 4. RESTRICTED APPS – App blocking logic
+// ══════════════════════════════════════════════════════════════
+model RestrictedApp {
+  id              String  @id @default(cuid())
+  userId          String
+  packageName     String
+  appName         String
+  iconUrl         String?
+  isEnabled       Boolean @default(true)
+  
+  // Barrier settings
+  barrierSeconds  Int     @default(10)
+  customMessage   String? @default("Take a deep breath...")
+  
+  // Daily stats
+  todayUsageSec   Int     @default(0)
+  todayBlocks     Int     @default(0)
+  lastResetDate   DateTime @default(now())
+  
+  // Analytics
+  totalBlocks     Int     @default(0)
+  totalUsageSec   Int     @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, packageName])
+  @@index([userId, isEnabled])
+  @@index([userId, todayUsageSec])
+  @@map("restricted_apps")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 5. TASK TEMPLATES – Predefined task library
+// ══════════════════════════════════════════════════════════════
+model TaskTemplate {
+  id          Int     @id @default(autoincrement())
+  key         String  @unique
+  name        String
+  icon        String
+  description String?
+  duration    Int?
+  category    String?
+  isActive    Boolean @default(true)
+  isPremium   Boolean @default(false)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([category, isActive])
+  @@index([isPremium])
+  @@map("task_templates")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 6. BREATHING EXERCISES – Guided breathing content
+// ══════════════════════════════════════════════════════════════
+model BreathingExercise {
+  id          Int     @id @default(autoincrement())
+  key         String  @unique
+  name        String
+  description String?
+  
+  // Breathing pattern (in seconds)
+  inhale      Int
+  hold        Int
+  exhale      Int
+  holdAfterExhale Int @default(0)
+  
+  cycles      Int     @default(4)
+  duration    Int?
+  difficulty  String? @default("beginner")
+  isPremium   Boolean @default(false)
+  isActive    Boolean @default(true)
+  
+  @@index([difficulty, isActive])
+  @@map("breathing_exercises")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 7. AUDIT LOG – Track admin/moderator actions (RBAC)
+// ══════════════════════════════════════════════════════════════
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String
+  action      String
+  targetType  String?
+  targetId    String?
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([targetType, targetId])
+  @@map("audit_logs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 8. FEATURE FLAGS – Dynamic feature control
+// ══════════════════════════════════════════════════════════════
+model FeatureFlag {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique
+  name        String
+  description String?
+  isEnabled   Boolean  @default(false)
+  rolloutPercent Int   @default(0)
+  requiredRole UserRole?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([isEnabled])
+  @@map("feature_flags")
+}

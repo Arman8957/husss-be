@@ -1,0 +1,5 @@
+export const JWT_CONSTANTS = {
+  ACCESS_TOKEN_EXPIRES: '15m',
+  REFRESH_TOKEN_EXPIRES: '7d',
+  COOKIE_MAX_AGE: 7 * 24 * 60 * 60 * 1000, // 7 days
+};
