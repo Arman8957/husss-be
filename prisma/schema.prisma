@@ -8,7 +8,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Enums
+// ══════════════════════════════════════════════════════════════
+// ENUMS
+// ══════════════════════════════════════════════════════════════
+
 enum AuthProvider {
   EMAIL
   GOOGLE
@@ -18,61 +21,265 @@ enum AuthProvider {
 enum UserRole {
   USER
   PREMIUM
+  COACH
   ADMIN
   MODERATOR
   SUPPORT
 }
 
-enum TaskFrequency {
-  DAILY
-  WEEKLY
+enum SubscriptionPlan {
+  FREE
+  MONTHLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  TRIALING
+  PAST_DUE
+}
+
+enum ProgramDifficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCE
+}
+
+enum ProgramType {
+  BUILTIN      // Admin-created programs (e.g. 10-Week Monster Confusion)
+  CUSTOM       // User manually designed
+  AUTO         // AI-generated based on preferences
+  FREESTYLE    // On-the-fly / decide today
+  ON_THE_FLY   // On-the-fly auto program
+}
+
+enum DaySplitType {
+  PUSH_PULL_LEGS
+  UPPER_LOWER
+  FULL_BODY
+  BRO_SPLIT
   CUSTOM
 }
 
-// Models (copy all your models here)
+enum WorkoutDayType {
+  PUSH
+  PULL
+  LEGS
+  UPPER
+  LOWER
+  FULL_BODY
+  REST
+  CUSTOM
+}
+
+enum WorkoutStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum ExerciseCategory {
+  COMPOUND
+  ISOLATION
+  CARDIO
+  STRETCHING
+  ACTIVATION
+  BFR
+  ABS
+  ACCESSORY
+}
+
+enum MuscleGroup {
+  CHEST
+  BACK
+  SHOULDERS
+  BICEPS
+  TRICEPS
+  LEGS
+  QUADS
+  HAMSTRINGS
+  CALVES
+  GLUTES
+  ABS
+  TRAPS
+  FOREARMS
+  FULL_BODY
+}
+
+enum EquipmentType {
+  BARBELL
+  DUMBBELL
+  CABLE
+  MACHINE
+  BODYWEIGHT
+  BANDS
+  KETTLEBELL
+  SMITH_MACHINE
+  NONE
+}
+
+enum TrainingMethodType {
+  FIVE_BY_FIVE          // 5x5
+  MAX_OT                // Max-OT
+  BULLDOZER             // Bulldozer (1x20)
+  BURNS                 // Burns (50 reps)
+  GIRONDA_8X8           // Gironda 8×8
+  TEN_BY_THREE          // 10×3 (45s rest)
+  HIGH_REP_20_REP_SQUAT // High Rep + 20-Rep Squat
+  YATES_HIGH_INTENSITY  // Yates/High-Intensity
+  WESTSIDE_CONJUGATE    // Westside Conjugate
+  MODERATE_VOLUME       // Moderate Volume 3×6-10
+  SINGLES_DOUBLES_TRIPLES
+  ACTIVATION
+  CUSTOM
+}
+
+enum SetType {
+  NORMAL
+  WARMUP
+  DROP_SET
+  SUPER_SET
+  FAILURE
+  BFR
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  GIF
+}
+
+enum AbsWorkoutType {
+  TWO_DAY  // 2 Day Abs (All 3×10-12)
+  THREE_DAY // 3 Day Abs (All 3×10-12)
+}
+
+enum SessionStatus {
+  CONFIRMED
+  REQUESTED
+  DECLINED
+  CANCELLED
+  COMPLETED
+}
+
+enum ClientStatus {
+  PENDING_PAR_Q
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum SupplementCategory {
+  FOUNDATION
+  PERFORMANCE
+  RECOVERY
+  OPTIONAL
+}
+
+enum HealthCheckCategory {
+  HORMONAL_BALANCE
+  INFLAMMATION_MARKERS
+  NUTRIENT_LEVELS
+  BLOOD_PRESSURE_CARDIOVASCULAR
+  GENERAL
+}
+
+enum NotificationType {
+  WORKOUT_REMINDER
+  PROGRAM_UPDATE
+  COACH_MESSAGE
+  SESSION_CONFIRMED
+  SESSION_REQUESTED
+  PAR_Q_REVIEW
+  PREMIUM_EXPIRY
+  SYSTEM
+}
+
+enum GenderType {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum WeightUnit {
+  KG
+  LB
+}
+
+enum MeasurementUnit {
+  CM
+  INCH
+}
+
 // ══════════════════════════════════════════════════════════════
 // 1. USER – Auth + Premium + Role-Based Access
 // ══════════════════════════════════════════════════════════════
+
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  passwordHash  String?
-  avatar        String?
-  googleId      String?   @unique
-  appleId       String?   @unique      
-  firebaseUid   String?   @unique
-  provider      AuthProvider @default(EMAIL)
-  
+  id           String       @id @default(cuid())
+  name         String?
+  email        String       @unique
+  passwordHash String?
+  avatar       String?
+  googleId     String?      @unique
+  appleId      String?      @unique
+  firebaseUid  String?      @unique
+  provider     AuthProvider @default(EMAIL)
+
   // Role-Based Access Control
-  role          UserRole  @default(USER)
-  permissions   String[]  @default([])
-  
+  role        UserRole @default(USER)
+  permissions String[] @default([])
+
   // Premium & Trial
-  isPremium     Boolean   @default(false)
-  premiumUntil  DateTime?
-  trialEndsAt   DateTime? @default(dbgenerated("now() + interval '7 days'"))
-  
-  // Stats
-  focusScore    Int       @default(0)
-  streakDays    Int       @default(0)
+  isPremium    Boolean   @default(false)
+  premiumUntil DateTime?
+  trialEndsAt  DateTime? @default(dbgenerated("now() + interval '7 days'"))
+
+  // Profile
+  gender      GenderType?
+  age         Int?
+  phoneNumber String?
+  weightUnit  WeightUnit      @default(KG)
+  measureUnit MeasurementUnit @default(CM)
+
+  // Stats & Streaks
+  focusScore     Int       @default(0)
+  streakDays     Int       @default(0)
   lastActiveDate DateTime?
-  
+  totalWorkouts  Int       @default(0)
+
   // Account Status
   isActive      Boolean   @default(true)
   emailVerified Boolean   @default(false)
-  
+
   // Timestamps
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  lastLoginAt   DateTime?
-  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
+
   // Relations
-  tasks         UserTask[]
-  restrictions  RestrictedApp[]
-  sessions      Session[]
-  auditLogs     AuditLog[]
-  
+  sessions             Session[]
+  subscription         Subscription?
+  coachProfile         CoachProfile?
+  clientProfile        ClientProfile?
+  activeProgram        UserActiveProgram?
+  userPrograms         UserProgram[]
+  workoutLogs          WorkoutLog[]
+  bodyDimensions       BodyDimension[]
+  notifications        Notification[]
+  supplementTracking   UserSupplementTracking[]
+  proteinCalculations  ProteinCalculation[]
+  waterIntakeLog       WaterIntakeLog[]
+  affiliatePurchases   AffiliatePurchase[]
+  reviewsGiven         ProgramReview[]
+  pushTokens           PushToken[]
+  parqSubmissions      ParqSubmission[]         // as coached user
+  favoriteExercises    UserFavoriteExercise[]
+
   @@index([email])
   @@index([isPremium])
   @@index([lastActiveDate])
@@ -84,6 +291,7 @@ model User {
 // ══════════════════════════════════════════════════════════════
 // 2. SESSION – Track active user sessions (security)
 // ══════════════════════════════════════════════════════════════
+
 model Session {
   id           String   @id @default(cuid())
   userId       String
@@ -93,9 +301,9 @@ model Session {
   lastActiveAt DateTime @default(now())
   expiresAt    DateTime
   createdAt    DateTime @default(now())
-  
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([token])
   @@index([expiresAt])
@@ -103,154 +311,1404 @@ model Session {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 3. USER TASKS – Core unlock logic
+// 3. SUBSCRIPTION – Premium plans billing
 // ══════════════════════════════════════════════════════════════
-model UserTask {
-  id            String   @id @default(cuid())
-  userId        String
-  taskName      String
-  isCompleted   Boolean  @default(false)
-  
-  // Dates
-  date          DateTime
-  scheduledTime String?
-  completedAt   DateTime?
-  
-  // Recurrence
-  frequency     TaskFrequency @default(DAILY)
-  customDays    Int[]    @default([])
-  
-  // Metadata
-  notes         String?
-  priority      Int      @default(0)
-  
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@unique([userId, taskName, date])
-  @@index([userId, date])
-  @@index([userId, isCompleted, date])
-  @@index([userId, completedAt])
-  @@map("user_tasks")
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  plan                 SubscriptionPlan   @default(FREE)
+  status               SubscriptionStatus @default(TRIALING)
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  stripePriceId        String?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  cancelledAt          DateTime?
+  trialStart           DateTime?
+  trialEnd             DateTime?
+  // Coach-specific
+  isCoachPremium       Boolean            @default(false)
+  maxClients           Int                @default(0) // 0 = free tier limit
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([stripeCustomerId])
+  @@index([status])
+  @@map("subscriptions")
 }
 
 // ══════════════════════════════════════════════════════════════
-// 4. RESTRICTED APPS – App blocking logic
+// 4. COACH PROFILE
 // ══════════════════════════════════════════════════════════════
-model RestrictedApp {
-  id              String  @id @default(cuid())
-  userId          String
-  packageName     String
-  appName         String
-  iconUrl         String?
-  isEnabled       Boolean @default(true)
-  
-  // Barrier settings
-  barrierSeconds  Int     @default(10)
-  customMessage   String? @default("Take a deep breath...")
-  
-  // Daily stats
-  todayUsageSec   Int     @default(0)
-  todayBlocks     Int     @default(0)
-  lastResetDate   DateTime @default(now())
-  
-  // Analytics
-  totalBlocks     Int     @default(0)
-  totalUsageSec   Int     @default(0)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@unique([userId, packageName])
-  @@index([userId, isEnabled])
-  @@index([userId, todayUsageSec])
-  @@map("restricted_apps")
+
+model CoachProfile {
+  id          String  @id @default(cuid())
+  userId      String  @unique
+  bio         String?
+  specialties String[] @default([])
+  certifications String[] @default([])
+  profilePhoto String?
+  phoneNumber  String?
+  isVerified   Boolean @default(false)
+  isActive     Boolean @default(true)
+  rating       Float   @default(0)
+  totalReviews Int     @default(0)
+  // Stats
+  totalClients      Int @default(0)
+  totalSessionsHeld Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clients         ClientProfile[]
+  availability    CoachAvailability[]
+  calendarSessions CoachSession[]
+  invitations     CoachInvitation[]
+  affiliateProducts CoachAffiliateProduct[]
+
+  @@index([userId])
+  @@index([isVerified, isActive])
+  @@map("coach_profiles")
 }
 
 // ══════════════════════════════════════════════════════════════
-// 5. TASK TEMPLATES – Predefined task library
+// 5. CLIENT PROFILE – User who is coached
 // ══════════════════════════════════════════════════════════════
-model TaskTemplate {
-  id          Int     @id @default(autoincrement())
-  key         String  @unique
-  name        String
-  icon        String
-  description String?
-  duration    Int?
-  category    String?
-  isActive    Boolean @default(true)
-  isPremium   Boolean @default(false)
-  
+
+model ClientProfile {
+  id        String       @id @default(cuid())
+  userId    String       @unique
+  coachId   String
+  status    ClientStatus @default(PENDING_PAR_Q)
+
+  // Joined via invitation
+  invitationId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coach    CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  sessions CoachSession[]
+  parqSubmissions ParqSubmission[]
+
+  @@index([coachId])
+  @@index([userId])
+  @@index([status])
+  @@map("client_profiles")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 6. COACH INVITATION
+// ══════════════════════════════════════════════════════════════
+
+model CoachInvitation {
+  id        String   @id @default(cuid())
+  coachId   String
+  code      String   @unique // short code
+  link      String   @unique // full URL
+  isUsed    Boolean  @default(false)
+  usedBy    String?  // userId who used it
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  coach CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
+
+  @@index([coachId])
+  @@index([code])
+  @@index([expiresAt])
+  @@map("coach_invitations")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 7. PAR-Q (Physical Activity Readiness Questionnaire)
+// ══════════════════════════════════════════════════════════════
+
+model ParqSubmission {
+  id             String   @id @default(cuid())
+  userId         String
+  clientProfileId String
+  // General Health
+  hasHeartCondition      Boolean
+  chestPainDuringActivity Boolean
+  chestPainAtRest        Boolean
+  losesBalanceDizziness  Boolean
+  // Blood Pressure & Cardiovascular
+  hasHighBloodPressure   Boolean
+  doctorLimitedActivity  Boolean
+  // Musculoskeletal
+  hasBoneJointProblem    Boolean
+  takingPrescription     Boolean
+  // Other
+  hasOtherReason         Boolean
+  otherReasonDetails     String?
+  // Signature & Date
+  signature              String?  // base64 or URL
+  signedAt               DateTime?
+  isApproved             Boolean @default(false)
+  reviewedByCoachAt      DateTime?
+  createdAt              DateTime @default(now())
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientProfile ClientProfile @relation(fields: [clientProfileId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([clientProfileId])
+  @@map("parq_submissions")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 8. COACH AVAILABILITY
+// ══════════════════════════════════════════════════════════════
+
+model CoachAvailability {
+  id        String   @id @default(cuid())
+  coachId   String
+  date      DateTime @db.Date
+  startTime DateTime
+  endTime   DateTime
+  gymName   String?
+  location  String?
+  isBooked  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  coach    CoachProfile  @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  sessions CoachSession[]
+
+  @@index([coachId])
+  @@index([date])
+  @@index([isBooked])
+  @@map("coach_availability")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 9. COACH SESSION (Calendar bookings)
+// ══════════════════════════════════════════════════════════════
+
+model CoachSession {
+  id              String        @id @default(cuid())
+  coachId         String
+  clientProfileId String
+  availabilityId  String?
+  status          SessionStatus @default(REQUESTED)
+  sessionType     String?       // e.g. "Strength Training"
+  scheduledAt     DateTime
+  durationMinutes Int           @default(60)
+  notes           String?
+  confirmedAt     DateTime?
+  cancelledAt     DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  coach         CoachProfile       @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  client        ClientProfile      @relation(fields: [clientProfileId], references: [id], onDelete: Cascade)
+  availability  CoachAvailability? @relation(fields: [availabilityId], references: [id])
+
+  @@index([coachId])
+  @@index([clientProfileId])
+  @@index([scheduledAt])
+  @@index([status])
+  @@map("coach_sessions")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 10. TRAINING METHODS (e.g. 5x5, Max-OT, Burns, etc.)
+// ══════════════════════════════════════════════════════════════
+
+model TrainingMethod {
+  id          String             @id @default(cuid())
+  name        String             @unique // "5x5", "Max-OT", etc.
+  type        TrainingMethodType
+  description String
+  setsInfo    String?  // "5 sets of 5 heavy reps"
+  repRange    String?  // "4-6"
+  restPeriod  String?  // "2-3 min"
+  intensity   String?  // "High"
+  notes       String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  @@index([category, isActive])
-  @@index([isPremium])
-  @@map("task_templates")
+
+  weeklyAssignments ProgramWeekTrainingMethod[]
+  workoutSessions   WorkoutSession[]
+
+  @@index([type])
+  @@map("training_methods")
 }
 
 // ══════════════════════════════════════════════════════════════
-// 6. BREATHING EXERCISES – Guided breathing content
+// 11. PROGRAM (Main workout programs — admin created or user custom)
 // ══════════════════════════════════════════════════════════════
-model BreathingExercise {
-  id          Int     @id @default(autoincrement())
-  key         String  @unique
+
+model Program {
+  id             String            @id @default(cuid())
+  name           String
+  description    String?
+  type           ProgramType       @default(BUILTIN)
+  difficulty     ProgramDifficulty @default(INTERMEDIATE)
+  durationWeeks  Int
+  daysPerWeek    Int
+  daySplitType   DaySplitType      @default(PUSH_PULL_LEGS)
+  isPremium      Boolean           @default(false)
+  isActive       Boolean           @default(true)
+  isPublished    Boolean           @default(false)
+  thumbnailUrl   String?
+  sortOrder      Int               @default(0)
+
+  // Features/tags for display
+  features       String[]          @default([])
+  tags           String[]          @default([])
+
+  // Program metadata
+  hasBFR         Boolean           @default(false)
+  hasAbsWorkout  Boolean           @default(false)
+  hasActivation  Boolean           @default(false)
+
+  // Creator (null = Admin/builtin)
+  createdByUserId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  weeks              ProgramWeek[]
+  userPrograms       UserProgram[]
+  activePrograms     UserActiveProgram[]
+  reviews            ProgramReview[]
+  homePageContents   HomePageContent[]
+  weekLockConfigs    PremiumWeekLockConfig[]
+  analytics          ProgramAnalytics?
+
+  @@index([type])
+  @@index([isPremium])
+  @@index([isPublished])
+  @@map("programs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 12. PROGRAM WEEK
+// ══════════════════════════════════════════════════════════════
+
+model ProgramWeek {
+  id        String @id @default(cuid())
+  programId String
+  weekNumber Int
+  isPremium Boolean @default(false) // premium-locked week
+  notes     String?
+
+  program         Program                      @relation(fields: [programId], references: [id], onDelete: Cascade)
+  days            ProgramDay[]
+  trainingMethods ProgramWeekTrainingMethod[]
+
+  @@unique([programId, weekNumber])
+  @@index([programId])
+  @@map("program_weeks")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 13. PROGRAM WEEK TRAINING METHODS (Push/Pull/Legs method per week)
+// ══════════════════════════════════════════════════════════════
+
+model ProgramWeekTrainingMethod {
+  id               String          @id @default(cuid())
+  programWeekId    String
+  trainingMethodId String
+  dayType          WorkoutDayType  // PUSH, PULL, LEGS
+
+  programWeek    ProgramWeek    @relation(fields: [programWeekId], references: [id], onDelete: Cascade)
+  trainingMethod TrainingMethod @relation(fields: [trainingMethodId], references: [id])
+
+  @@unique([programWeekId, dayType])
+  @@index([programWeekId])
+  @@map("program_week_training_methods")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 14. PROGRAM DAY (each workout day in a week)
+// ══════════════════════════════════════════════════════════════
+
+model ProgramDay {
+  id            String         @id @default(cuid())
+  programWeekId String
+  dayNumber     Int            // 1-7
+  dayType       WorkoutDayType
+  name          String?        // "Push Day", "Chest, Shoulders & Triceps"
+  isRestDay     Boolean        @default(false)
+  notes         String?
+
+  programWeek ProgramWeek     @relation(fields: [programWeekId], references: [id], onDelete: Cascade)
+  exercises   ProgramDayExercise[]
+  workoutSessions WorkoutSession[]
+
+  @@unique([programWeekId, dayNumber])
+  @@index([programWeekId])
+  @@map("program_days")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 15. EXERCISE (Global exercise library — admin managed)
+// ══════════════════════════════════════════════════════════════
+
+model Exercise {
+  id              String           @id @default(cuid())
+  name            String
+  description     String?
+  instructions    String?
+  category        ExerciseCategory
+  primaryMuscle   MuscleGroup
+  secondaryMuscles MuscleGroup[]   @default([])
+  equipment       EquipmentType    @default(NONE)
+  thumbnailUrl    String?
+  videoUrl        String?
+  gifUrl          String?
+  isActive        Boolean          @default(true)
+  isPublished     Boolean          @default(true)
+  // Admin fields
+  createdByAdminId String?
+  sortOrder        Int             @default(0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  programDayExercises ProgramDayExercise[]
+  workoutSetLogs      WorkoutSetLog[]
+  userFavorites       UserFavoriteExercise[]
+  media               ExerciseMedia[]
+
+  @@index([category])
+  @@index([primaryMuscle])
+  @@index([isPublished])
+  @@map("exercises")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 16. PROGRAM DAY EXERCISE (Exercise in a program day with prescribed sets/reps)
+// ══════════════════════════════════════════════════════════════
+
+model ProgramDayExercise {
+  id            String   @id @default(cuid())
+  programDayId  String
+  exerciseId    String
+  sortOrder     Int      @default(0)
+  // sets          Int
+  reps          String   // "5" or "10-12" or "AMRAP"
+  restSeconds   Int?     // seconds
+  setType       SetType  @default(NORMAL)
+  isOptional    Boolean  @default(false)
+  notes         String?  // "Heavy weight, 2-3 min rest"
+  // BFR/Abs flags
+  isBFR         Boolean  @default(false)
+  isAbs         Boolean  @default(false)
+  isAccessory   Boolean  @default(false)
+  accessoryNote String?  // "Close Grip flat bench press"
+
+  programDay ProgramDay @relation(fields: [programDayId], references: [id], onDelete: Cascade)
+  exercise   Exercise   @relation(fields: [exerciseId], references: [id])
+  sets       ProgramDayExerciseSet[]
+
+  @@index([programDayId])
+  @@index([exerciseId])
+  @@map("program_day_exercises")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 17. USER ACTIVE PROGRAM (current running program)
+// ══════════════════════════════════════════════════════════════
+
+model UserActiveProgram {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  programId     String
+  startedAt     DateTime  @default(now())
+  currentWeek   Int       @default(1)
+  currentDay    Int       @default(1)
+  // Abs preference
+  absWorkoutType AbsWorkoutType @default(TWO_DAY)
+  bfrEnabled    Boolean   @default(false)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program Program @relation(fields: [programId], references: [id])
+
+  @@index([userId])
+  @@index([programId])
+  @@map("user_active_programs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 18. USER PROGRAM (history of all programs user started/completed)
+// ══════════════════════════════════════════════════════════════
+
+model UserProgram {
+  id          String    @id @default(cuid())
+  userId      String
+  programId   String
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  isCompleted Boolean   @default(false)
+  totalWeeks  Int
+  completedWeeks Int    @default(0)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program Program @relation(fields: [programId], references: [id])
+
+  @@index([userId])
+  @@index([programId])
+  @@map("user_programs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 19. WORKOUT LOG (one log per scheduled workout day)
+// ══════════════════════════════════════════════════════════════
+
+model WorkoutLog {
+  id             String        @id @default(cuid())
+  userId         String
+  programDayId   String?       // null for freestyle
+  programId      String?
+  weekNumber     Int?
+  dayNumber      Int?
+  status         WorkoutStatus @default(PENDING)
+  scheduledDate  DateTime      @db.Date
+  startedAt      DateTime?
+  completedAt    DateTime?
+  durationSeconds Int?
+  notes          String?
+  totalVolume    Float?        // total kg lifted
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutSessions WorkoutSession[]
+
+  @@index([userId])
+  @@index([scheduledDate])
+  @@index([status])
+  @@index([programId])
+  @@map("workout_logs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 20. WORKOUT SESSION (actual exercise sets during a workout)
+// ══════════════════════════════════════════════════════════════
+
+model WorkoutSession {
+  id               String   @id @default(cuid())
+  workoutLogId     String
+  programDayId     String?
+  trainingMethodId String?
+  sortOrder        Int      @default(0)
+  notes            String?
+
+  workoutLog     WorkoutLog      @relation(fields: [workoutLogId], references: [id], onDelete: Cascade)
+  programDay     ProgramDay?     @relation(fields: [programDayId], references: [id])
+  trainingMethod TrainingMethod? @relation(fields: [trainingMethodId], references: [id])
+  setLogs        WorkoutSetLog[]
+
+  @@index([workoutLogId])
+  @@map("workout_sessions")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 21. WORKOUT SET LOG (individual set data — reps + weight)
+// ══════════════════════════════════════════════════════════════
+
+model WorkoutSetLog {
+  id               String   @id @default(cuid())
+  workoutSessionId String
+  exerciseId       String
+  setNumber        Int
+  plannedReps      Int?
+  actualReps       Int?
+  weight           Float?   // in user's preferred unit
+  weightUnit       WeightUnit @default(KG)
+  isCompleted      Boolean  @default(false)
+  completionPercent Int?    // 100%, 97%, etc.
+  setType          SetType  @default(NORMAL)
+  restStartedAt    DateTime?
+  restEndedAt      DateTime?
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  workoutSession WorkoutSession @relation(fields: [workoutSessionId], references: [id], onDelete: Cascade)
+  exercise       Exercise       @relation(fields: [exerciseId], references: [id])
+
+  @@index([workoutSessionId])
+  @@index([exerciseId])
+  @@map("workout_set_logs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 22. BODY DIMENSION TRACKER
+// ══════════════════════════════════════════════════════════════
+
+model BodyDimension {
+  id             String          @id @default(cuid())
+  userId         String
+  date           DateTime        @db.Date
+  weight         Float?
+  weightUnit     WeightUnit      @default(KG)
+  measureUnit    MeasurementUnit @default(CM)
+  height         Float?
+  waist          Float?
+  leg            Float?          // high circumference, 5.5in from mid knee
+  arm            Float?          // circumference at center of bicep
+  bodyFatPercent Float?
+  notes          String?
+  createdAt      DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([date])
+  @@map("body_dimensions")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 23. PROGRAM REVIEW
+// ══════════════════════════════════════════════════════════════
+
+model ProgramReview {
+  id        String @id @default(cuid())
+  programId String
+  userId    String
+  rating    Int    // 1-5
+  comment   String?
+  createdAt DateTime @default(now())
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([programId, userId])
+  @@index([programId])
+  @@map("program_reviews")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 24. SUPPLEMENT (Global catalog — admin managed)
+// ══════════════════════════════════════════════════════════════
+
+model Supplement {
+  id          String             @id @default(cuid())
+  name        String
+  category    SupplementCategory
+  description String?
+  dosage      String             // "3-5g daily"
+  timing      String             // "Any time"
+  notes       String?            // "Isolate recommended for fat loss"
+  isRecommended Boolean          @default(false)
+  sortOrder   Int                @default(0)
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  affiliateProducts AffiliateProduct[]
+  userTracking      UserSupplementTracking[]
+
+  @@index([category])
+  @@map("supplements")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 25. AFFILIATE PRODUCT (Supplement products for purchase)
+// ══════════════════════════════════════════════════════════════
+
+model AffiliateProduct {
+  id             String   @id @default(cuid())
+  supplementId   String?
+  name           String
+  brand          String?
+  description    String?
+  imageUrl       String?
+  price          Float
+  currency       String   @default("USD")
+  affiliateUrl   String   // external purchase link
+  sellerName     String?  // "SupplementHub"
+  features       String[] @default([])
+  isActive       Boolean  @default(true)
+  isVerified     Boolean  @default(false) // third-party tested etc.
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  supplement         Supplement?              @relation(fields: [supplementId], references: [id])
+  purchases          AffiliatePurchase[]
+  coachAffiliates    CoachAffiliateProduct[]
+
+  @@index([supplementId])
+  @@index([isActive])
+  @@map("affiliate_products")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 26. COACH AFFILIATE PRODUCT (Coach's personal affiliate links)
+// ══════════════════════════════════════════════════════════════
+
+model CoachAffiliateProduct {
+  id               String   @id @default(cuid())
+  coachId          String
+  affiliateProductId String
+  customLink       String?  // coach's unique affiliate link
+  commissionRate   Float?   // percentage
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  coach          CoachProfile   @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  affiliateProduct AffiliateProduct @relation(fields: [affiliateProductId], references: [id])
+
+  @@unique([coachId, affiliateProductId])
+  @@index([coachId])
+  @@map("coach_affiliate_products")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 27. AFFILIATE PURCHASE (Track user purchases)
+// ══════════════════════════════════════════════════════════════
+
+model AffiliatePurchase {
+  id               String   @id @default(cuid())
+  userId           String
+  affiliateProductId String
+  referringCoachId String?
+  amount           Float
+  currency         String   @default("USD")
+  purchasedAt      DateTime @default(now())
+  orderId          String?  // external order reference
+
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  affiliateProduct AffiliateProduct @relation(fields: [affiliateProductId], references: [id])
+
+  @@index([userId])
+  @@index([affiliateProductId])
+  @@map("affiliate_purchases")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 28. USER SUPPLEMENT TRACKING
+// ══════════════════════════════════════════════════════════════
+
+model UserSupplementTracking {
+  id           String   @id @default(cuid())
+  userId       String
+  supplementId String
+  isActive     Boolean  @default(true)
+  notes        String?
+  startedAt    DateTime @default(now())
+  stoppedAt    DateTime?
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  supplement Supplement @relation(fields: [supplementId], references: [id])
+
+  @@index([userId])
+  @@map("user_supplement_tracking")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 29. PROTEIN CALCULATION
+// ══════════════════════════════════════════════════════════════
+
+model ProteinCalculation {
+  id                String     @id @default(cuid())
+  userId            String
+  targetLeanBodyWeight Float
+  weightUnit        WeightUnit @default(KG)
+  minGrams          Float
+  maxGrams          Float
+  goal              String?    // "maintenance", "bulking"
+  createdAt         DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("protein_calculations")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 30. WATER INTAKE LOG
+// ══════════════════════════════════════════════════════════════
+
+model WaterIntakeLog {
+  id         String   @id @default(cuid())
+  userId     String
+  date       DateTime @db.Date
+  liters     Float
+  goal       Float    @default(3.5)
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@map("water_intake_logs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 31. HEALTH CHECK CATEGORY (admin-defined health check types)
+// ══════════════════════════════════════════════════════════════
+
+model HealthCheckItem {
+  id          String              @id @default(cuid())
+  category    HealthCheckCategory
+  name        String              // "Testosterone levels (free and total)"
+  description String?
+  sortOrder   Int                 @default(0)
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+
+  @@index([category])
+  @@map("health_check_items")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 32. PARTNER CLINIC (Health check partner clinics)
+// ══════════════════════════════════════════════════════════════
+
+model PartnerClinic {
+  id          String   @id @default(cuid())
   name        String
   description String?
-  
-  // Breathing pattern (in seconds)
-  inhale      Int
-  hold        Int
-  exhale      Int
-  holdAfterExhale Int @default(0)
-  
-  cycles      Int     @default(4)
-  duration    Int?
-  difficulty  String? @default("beginner")
-  isPremium   Boolean @default(false)
-  isActive    Boolean @default(true)
-  
-  @@index([difficulty, isActive])
-  @@map("breathing_exercises")
+  address     String
+  city        String
+  country     String
+  phone       String?
+  email       String?
+  website     String?
+  bookingUrl  String?
+  imageUrl    String?
+  distanceMiles Float?
+  openingHours  String? // "8:00 AM - 6:00 PM"
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  latitude    Float?
+  longitude   Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([country, city])
+  @@map("partner_clinics")
 }
 
 // ══════════════════════════════════════════════════════════════
-// 7. AUDIT LOG – Track admin/moderator actions (RBAC)
+// 33. GYM (Find Gym feature — future)
 // ══════════════════════════════════════════════════════════════
-model AuditLog {
+
+model Gym {
   id          String   @id @default(cuid())
-  userId      String
-  action      String
-  targetType  String?
+  name        String
+  description String?
+  address     String
+  city        String
+  country     String
+  phone       String?
+  email       String?
+  website     String?
+  bookingUrl  String?
+  imageUrl    String?
+  latitude    Float?
+  longitude   Float?
+  rating      Float    @default(0)
+  isActive    Boolean  @default(true)
+  isPartner   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([city, country])
+  @@index([isPartner])
+  @@map("gyms")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 34. EXECUTION GUIDELINE (Important rules — admin managed)
+// ══════════════════════════════════════════════════════════════
+
+model ExecutionGuideline {
+  id          String   @id @default(cuid())
+  title       String
+  content     String
+  category    String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("execution_guidelines")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 35. ESSENTIAL CONTENT (Health Foundation & Optimization)
+// ══════════════════════════════════════════════════════════════
+
+model EssentialContent {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  content     String   // rich text/markdown
+  imageUrl    String?
+  category    String?  // "Health Foundation"
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("essential_contents")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 36. MEDIA ASSET (Global media library — admin managed)
+// ══════════════════════════════════════════════════════════════
+
+model MediaAsset {
+  id          String    @id @default(cuid())
+  url         String    @unique
+  type        MediaType
+  fileName    String
+  fileSize    Int?      // bytes
+  mimeType    String?
+  width       Int?
+  height      Int?
+  altText     String?
+  uploadedBy  String?   // admin userId
+  isPublic    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  @@index([type])
+  @@map("media_assets")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 37. NOTIFICATION
+// ══════════════════════════════════════════════════════════════
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?            // extra payload
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 38. PUSH TOKEN (FCM / APNs device tokens)
+// ══════════════════════════════════════════════════════════════
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String   // "ios" | "android" | "web"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_tokens")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 39. USER FAVORITE EXERCISE
+// ══════════════════════════════════════════════════════════════
+
+model UserFavoriteExercise {
+  id         String   @id @default(cuid())
+  userId     String
+  exerciseId String
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exerciseId])
+  @@index([userId])
+  @@map("user_favorite_exercises")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 40. ADMIN ACTIVITY LOG (Audit trail for admin actions)
+// ══════════════════════════════════════════════════════════════
+
+model AdminActivityLog {
+  id          String   @id @default(cuid())
+  adminUserId String
+  action      String   // "CREATE_EXERCISE", "PUBLISH_PROGRAM", etc.
+  targetType  String?  // "Exercise", "Program", etc.
   targetId    String?
-  metadata    Json?
+  details     Json?
   ipAddress   String?
   createdAt   DateTime @default(now())
-  
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
+
+  @@index([adminUserId])
   @@index([action])
   @@index([createdAt])
-  @@index([targetType, targetId])
-  @@map("audit_logs")
+  @@map("admin_activity_logs")
 }
 
 // ══════════════════════════════════════════════════════════════
-// 8. FEATURE FLAGS – Dynamic feature control
+// 41. APP CONFIG (Feature flags, global settings)
 // ══════════════════════════════════════════════════════════════
-model FeatureFlag {
-  id          Int      @id @default(autoincrement())
-  key         String   @unique
-  name        String
+
+model AppConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  type      String   @default("string") // "string" | "boolean" | "number" | "json"
+  group     String?  // "premium", "gym", "notifications"
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@map("app_configs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// NEW ENUMS — Admin Panel
+// ══════════════════════════════════════════════════════════════
+
+enum ExerciseTabType {
+  MAIN_EXERCISE
+  BFR_EXERCISE
+  ABS_EXERCISE
+}
+
+enum BFRContentCategory {
+  SAFETY_DISCLAIMER
+  BFR_SESSION
+  RESEARCH_AND_EDUCATION
+}
+
+enum BFRSessionCategory {
+  HYPERTROPHY
+  STRENGTH
+  ENDURANCE
+  RECOVERY
+}
+
+enum BFRBodyType {
+  UPPER
+  LOWER
+  FULL_BODY
+}
+
+enum ResearchCategory {
+  BASIC
+  ADVANCED
+  DETAIL
+}
+
+enum NotificationTemplateCategory {
+  ENGAGEMENT
+  MOTIVATION
+  MARKETING
+}
+
+enum NotificationAudience {
+  ALL_USERS
+  PREMIUM_USERS
+  FREE_USERS
+  TRIAL_USERS
+  COACHES
+  COACHED_CLIENTS
+}
+
+enum PremiumPlanBillingPeriod {
+  MONTHLY
+  ANNUAL
+}
+
+enum HomePageContentType {
+  PROGRAM        // links to a program
+  BANNER         // custom banner/image card
+  ANNOUNCEMENT   // text announcement
+}
+
+enum PaymentStatus {
+  SUCCEEDED
+  PENDING
+  FAILED
+  REFUNDED
+}
+
+enum UserActivityType {
+  UPGRADED_TO_PREMIUM
+  ENROLLED_IN_PROGRAM
+  NEW_REGISTRATION
+  COMPLETED_WORKOUT
+  COMPLETED_PROGRAM
+  COACH_JOINED
+  SUBSCRIPTION_CANCELLED
+  SUBSCRIPTION_EXPIRED
+}
+
+// ══════════════════════════════════════════════════════════════
+// 42. PROGRAM DAY EXERCISE SET (admin-defined per-set config)
+//     Replaces the flat sets/reps on ProgramDayExercise
+//     — supports the "Add Exercise" modal with set rows
+// ══════════════════════════════════════════════════════════════
+
+model ProgramDayExerciseSet {
+  id                   String   @id @default(cuid())
+  programDayExerciseId String
+  setNumber            Int      // 1, 2, 3 …
+  reps                 String   // "05", "12", "AMRAP", "10-12"
+  restSeconds          Int      // 60, 90, 120 …
+  notes                String?
+
+  programDayExercise ProgramDayExercise @relation(fields: [programDayExerciseId], references: [id], onDelete: Cascade)
+
+  @@index([programDayExerciseId])
+  @@map("program_day_exercise_sets")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 43. EXERCISE MEDIA (image, video, animation per exercise)
+//     Shown in admin "Add Exercise" modal
+// ══════════════════════════════════════════════════════════════
+
+model ExerciseMedia {
+  id         String    @id @default(cuid())
+  exerciseId String
+  type       MediaType // IMAGE | VIDEO | GIF
+  url        String
+  label      String?   // "Exercise Image", "Exercise Animation"
+  sortOrder  Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@index([exerciseId])
+  @@map("exercise_media")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 44. HOME PAGE CONTENT (admin-ordered program/banner cards)
+//     Content Management → Home Page Content tab
+// ══════════════════════════════════════════════════════════════
+
+model HomePageContent {
+  id          String              @id @default(cuid())
+  type        HomePageContentType @default(PROGRAM)
+  programId   String?             // if type = PROGRAM
+  title       String?             // custom title override
   description String?
-  isEnabled   Boolean  @default(false)
-  rolloutPercent Int   @default(0)
-  requiredRole UserRole?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  @@index([isEnabled])
-  @@map("feature_flags")
+  imageUrl    String?
+  position    Int                 // ordering position (1, 2, 3 …)
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  program Program? @relation(fields: [programId], references: [id], onDelete: SetNull)
+
+  @@index([position])
+  @@map("home_page_contents")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 45. PREMIUM WEEK LOCK CONFIG
+//     Content Management → Premium Lock Library tab
+//     Admin controls which weeks are free vs premium per program
+// ══════════════════════════════════════════════════════════════
+
+model PremiumWeekLockConfig {
+  id            String   @id @default(cuid())
+  programId     String
+  weekNumber    Int
+  isPremiumLock Boolean  @default(false) // true = premium required
+  updatedAt     DateTime @updatedAt
+  updatedByAdminId String?
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@unique([programId, weekNumber])
+  @@index([programId])
+  @@map("premium_week_lock_configs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 46. EXECUTION NOTE
+//     Content Management → Execution Notes tab
+//     Rules/guidelines shown to users (e.g. "Workout Duration Rule")
+// ══════════════════════════════════════════════════════════════
+
+model ExecutionNote {
+  id           String   @id @default(cuid())
+  title        String   // "Workout Duration Rule"
+  notes        String[] @default([]) // individual bullet notes
+  finalMessage String?  // bottom summary paragraph
+  position     Int      @default(0)  // ordering
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([position])
+  @@map("execution_notes")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 47. BFR CONTENT — Safety Disclaimer, BFR Sessions, Research
+//     Content Management → BFR Sessions Guidelines tab
+// ══════════════════════════════════════════════════════════════
+
+model BFRContent {
+  id               String             @id @default(cuid())
+  category         BFRContentCategory // SAFETY_DISCLAIMER | BFR_SESSION | RESEARCH_AND_EDUCATION
+  title            String
+  shortDescription String?
+  richContent      String?            // HTML/Markdown rich text (safety info section)
+  finalMessage     String?
+
+  // BFR_SESSION specific fields
+  sessionCategory  BFRSessionCategory? // Hypertrophy / Strength etc.
+  bodyType         BFRBodyType?         // Upper / Lower / Full Body
+  durationMinutes  Int?                 // e.g. 20
+  exerciseCount    Int?                 // e.g. 4
+
+  // RESEARCH_AND_EDUCATION specific fields
+  researchCategory ResearchCategory?   // Basic / Advanced / Detail
+
+  isActive   Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([category])
+  @@index([sessionCategory])
+  @@map("bfr_contents")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 48. HEALTH MARKER GROUP
+//     Essential Management → Health Checks & Clinics
+//     Admin manages named groups like "Hormonal Balance" with marker items
+// ══════════════════════════════════════════════════════════════
+
+model HealthMarkerGroup {
+  id          String              @id @default(cuid())
+  category    HealthCheckCategory
+  name        String              // "Hormonal Balance"
+  description String?
+  sortOrder   Int                 @default(0)
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  markers HealthMarker[]
+
+  @@index([category])
+  @@map("health_marker_groups")
+}
+
+model HealthMarker {
+  id       String @id @default(cuid())
+  groupId  String
+  name     String // "Testosterone levels (free and total)"
+  sortOrder Int   @default(0)
+
+  group HealthMarkerGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@map("health_markers")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 49. SUPPLEMENT PRODUCT (admin-managed affiliate product catalog)
+//     Essential Management → Supplement tab
+//     Replaces / extends AffiliateProduct with admin CRUD UI fields
+// ══════════════════════════════════════════════════════════════
+
+model SupplementProduct {
+  id               String             @id @default(cuid())
+  name             String             // "Creatine HCL"
+  category         SupplementCategory // Foundation / Performance / Recovery / Optional
+  price            Float
+  currency         String             @default("USD")
+  vendorName       String?            // "OptimumNutrition"
+  purchasePageUrl  String             // affiliate purchase URL
+  benefits         String[]           @default([]) // ["No bloating", "Micronized", "Third-party tested"]
+  imageUrl         String?
+  inStock          Boolean            @default(true)
+  isActive         Boolean            @default(true)
+  sortOrder        Int                @default(0)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([category])
+  @@index([inStock])
+  @@map("supplement_products")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 50. SUBSCRIPTION PLAN CONFIG
+//     Premium Features → Subscription Plans tab
+//     Admin can edit plan names, prices, features, billing period
+// ══════════════════════════════════════════════════════════════
+
+model SubscriptionPlanConfig {
+  id            String                   @id @default(cuid())
+  name          String                   // "Monthly Premium", "Yearly Premium", "Free"
+  plan          SubscriptionPlan         @unique
+  billingPeriod PremiumPlanBillingPeriod?
+  priceUSD      Float                    @default(0)
+  isPopular     Boolean                  @default(false)
+  savingsPercent Int?                    // e.g. 17 (for "Save 17%")
+  features      String[]                 @default([]) // feature bullet strings
+  stripePriceId String?
+  isActive      Boolean                  @default(true)
+  updatedAt     DateTime                 @updatedAt
+  updatedBy     String?
+
+  @@map("subscription_plan_configs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 51. PAYMENT TRANSACTION
+//     Premium Features → Payment Management tab
+//     Full payment ledger for all transactions
+// ══════════════════════════════════════════════════════════════
+
+model PaymentTransaction {
+  id                String        @id @default(cuid())
+  userId            String
+  stripePaymentId   String?       @unique
+  stripeInvoiceId   String?       @unique
+  plan              SubscriptionPlan
+  amount            Float
+  currency          String        @default("USD")
+  status            PaymentStatus @default(PENDING)
+  description       String?
+  refundedAt        DateTime?
+  refundAmount      Float?
+  failureReason     String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("payment_transactions")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 52. PUSH NOTIFICATION TEMPLATE
+//     Settings → Push Notification Templates
+//     Admin enables/disables pre-defined templates + sends custom blasts
+// ══════════════════════════════════════════════════════════════
+
+model PushNotificationTemplate {
+  id         String                       @id @default(cuid())
+  name       String                       // "Workout Reminder"
+  category   NotificationTemplateCategory // ENGAGEMENT | MOTIVATION | MARKETING
+  titleTemplate String                    // "Time to train, {name}!"
+  bodyTemplate  String                    // "Your workout is ready."
+  isEnabled  Boolean                      @default(false)
+  // scheduling
+  scheduledCron String?                   // cron expression for automated sends
+  updatedAt  DateTime                     @updatedAt
+  updatedBy  String?
+
+  blasts NotificationBlast[]
+
+  @@map("push_notification_templates")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 53. NOTIFICATION BLAST (custom or template-based sends)
+//     Settings → Send Custom Notification
+// ══════════════════════════════════════════════════════════════
+
+model NotificationBlast {
+  id           String               @id @default(cuid())
+  templateId   String?              // null = custom blast
+  audience     NotificationAudience @default(ALL_USERS)
+  title        String
+  message      String
+  sentByAdminId String
+  scheduledAt  DateTime?            // null = send now
+  sentAt       DateTime?
+  totalSent    Int                  @default(0)
+  totalFailed  Int                  @default(0)
+  createdAt    DateTime             @default(now())
+
+  template PushNotificationTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([sentByAdminId])
+  @@index([scheduledAt])
+  @@map("notification_blasts")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 54. PLATFORM ANALYTICS SNAPSHOT
+//     Dashboard charts — stored daily snapshots for fast queries
+// ══════════════════════════════════════════════════════════════
+
+model PlatformAnalyticsSnapshot {
+  id               String   @id @default(cuid())
+  date             DateTime @db.Date @unique
+  totalUsers       Int      @default(0)
+  premiumUsers     Int      @default(0)
+  freeUsers        Int      @default(0)
+  trialUsers       Int      @default(0)
+  expiredUsers     Int      @default(0)
+  activeEnrollments Int     @default(0)
+  totalCoaches     Int      @default(0)
+  coachedClients   Int      @default(0)
+  monthlyRevenue   Float    @default(0)
+  newUsersToday    Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  @@index([date])
+  @@map("platform_analytics_snapshots")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 55. USER ACTIVITY LOG
+//     Dashboard → Recent Activity feed
+//     Tracks key user events for admin visibility
+// ══════════════════════════════════════════════════════════════
+
+model UserActivityLog {
+  id         String           @id @default(cuid())
+  userId     String
+  type       UserActivityType
+  meta       Json?            // e.g. { programName: "Monster Mass Builder" }
+  createdAt  DateTime         @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("user_activity_logs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// 56. PROGRAM ANALYTICS
+//     Program Management → Program Analytics tab
+//     Per-program enrollment + completion metrics
+// ══════════════════════════════════════════════════════════════
+
+model ProgramAnalytics {
+  id               String   @id @default(cuid())
+  programId        String   @unique
+  totalEnrollments Int      @default(0)
+  activeEnrollments Int     @default(0)
+  completedCount   Int      @default(0)
+  completionRate   Float    @default(0)  // 0-100 %
+  avgWeeksCompleted Float   @default(0)
+  updatedAt        DateTime @updatedAt
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@map("program_analytics")
 }
