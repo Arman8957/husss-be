@@ -359,6 +359,7 @@ model CoachProfile {
   totalReviews      Int      @default(0)
   // Stats
   totalClients      Int      @default(0)
+
   totalSessionsHeld Int      @default(0)
   gymName         String?           
   gymLocation     String?
@@ -1356,6 +1357,7 @@ enum UserActivityType {
   COACH_JOINED
   SUBSCRIPTION_CANCELLED
   SUBSCRIPTION_EXPIRED
+  LOGIN_FAILED
 }
 
 // ══════════════════════════════════════════════════════════════
