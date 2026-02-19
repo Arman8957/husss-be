@@ -2,7 +2,7 @@ import { IsEmail, IsOptional, IsString } from 'class-validator';
 
 export class AppleLoginDto {
   @IsString()
-  identityToken: string;
+  identityToken!: string;
 
   @IsEmail()
   @IsOptional()

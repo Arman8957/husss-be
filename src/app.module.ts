@@ -12,6 +12,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { ValidationPipe } from './common/pipes/validation.pipe';
 import configuration from './config/configuration';
+import { AuditModule } from './common/audit/audit.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import configuration from './config/configuration';
     FirebaseModule,
     EmailModule,
     AuthModule,
+    AuditModule,
   ],
   providers: [
 
