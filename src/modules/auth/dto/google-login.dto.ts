@@ -2,7 +2,7 @@ import { IsString, IsOptional } from 'class-validator';
 
 export class GoogleLoginDto {
   @IsString()
-  idToken: string;
+  idToken!: string;
 
   @IsOptional()
   @IsString()

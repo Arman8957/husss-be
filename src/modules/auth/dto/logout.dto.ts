@@ -1,6 +1,6 @@
 import { IsString } from 'class-validator';
 
-export class VerifyEmailDto {
+export class LogoutDto {
   @IsString()
-  token!: string;
+  sessionId!: string;
 }

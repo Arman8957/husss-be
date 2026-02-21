@@ -23,6 +23,7 @@ enum UserRole {
   PREMIUM
   COACH
   ADMIN
+  SUPERADMIN
   MODERATOR
   SUPPORT
 }
@@ -1351,6 +1352,7 @@ enum UserActivityType {
   COACH_JOINED
   SUBSCRIPTION_CANCELLED
   SUBSCRIPTION_EXPIRED
+  LOGIN_FAILED
 }
 
 // ══════════════════════════════════════════════════════════════

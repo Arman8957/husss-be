@@ -10,6 +10,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { FirebaseModule } from '../../common/firebase/firebase.module';
 import { EmailModule } from '../../common/email/email.module';
+import { AuditService } from 'src/common/audit/audit.service';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { EmailModule } from '../../common/email/email.module';
     AuthService,     
     TokenService,   
     JwtStrategy,
+    AuditService,
     // GoogleStrategy,
   ],
   exports: [AuthService, JwtModule], // Export AuthService if other modules need it
