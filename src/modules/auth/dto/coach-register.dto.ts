@@ -40,7 +40,13 @@ export class CoachRegisterDto {
   @IsString()
   gymLocation?: string;
 
+   @IsOptional()
+  @IsString()
+  phoneNumber?: string;
+
   @IsArray()
   @IsString({ each: true })
   specialties: string[] = [];
+
+
 }

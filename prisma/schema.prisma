@@ -23,6 +23,7 @@ enum UserRole {
   PREMIUM
   COACH
   ADMIN
+  SUPERADMIN
   MODERATOR
   SUPPORT
 }

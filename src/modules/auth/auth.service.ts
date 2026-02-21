@@ -128,6 +128,7 @@ export class AuthService {
         provider: AuthProvider.EMAIL,
         role: UserRole.COACH,
         emailVerified: false,
+     
         subscription: { create: { plan: 'FREE', status: 'ACTIVE' } },
         coachProfile: {
           create: {
