@@ -1,6 +1,6 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client" 
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -48,11 +48,11 @@ enum ProgramDifficulty {
 }
 
 enum ProgramType {
-  BUILTIN      // Admin-created programs (e.g. 10-Week Monster Confusion)
-  CUSTOM       // User manually designed
-  AUTO         // AI-generated based on preferences
-  FREESTYLE    // On-the-fly / decide today
-  ON_THE_FLY   // On-the-fly auto program
+  BUILTIN // Admin-created programs (e.g. 10-Week Monster Confusion)
+  CUSTOM // User manually designed
+  AUTO // AI-generated based on preferences
+  FREESTYLE // On-the-fly / decide today
+  ON_THE_FLY // On-the-fly auto program
 }
 
 enum DaySplitType {
@@ -122,16 +122,16 @@ enum EquipmentType {
 }
 
 enum TrainingMethodType {
-  FIVE_BY_FIVE          // 5x5
-  MAX_OT                // Max-OT
-  BULLDOZER             // Bulldozer (1x20)
-  BURNS                 // Burns (50 reps)
-  GIRONDA_8X8           // Gironda 8×8
-  TEN_BY_THREE          // 10×3 (45s rest)
+  FIVE_BY_FIVE // 5x5
+  MAX_OT // Max-OT
+  BULLDOZER // Bulldozer (1x20)
+  BURNS // Burns (50 reps)
+  GIRONDA_8X8 // Gironda 8×8
+  TEN_BY_THREE // 10×3 (45s rest)
   HIGH_REP_20_REP_SQUAT // High Rep + 20-Rep Squat
-  YATES_HIGH_INTENSITY  // Yates/High-Intensity
-  WESTSIDE_CONJUGATE    // Westside Conjugate
-  MODERATE_VOLUME       // Moderate Volume 3×6-10
+  YATES_HIGH_INTENSITY // Yates/High-Intensity
+  WESTSIDE_CONJUGATE // Westside Conjugate
+  MODERATE_VOLUME // Moderate Volume 3×6-10
   SINGLES_DOUBLES_TRIPLES
   ACTIVATION
   CUSTOM
@@ -153,7 +153,7 @@ enum MediaType {
 }
 
 enum AbsWorkoutType {
-  TWO_DAY  // 2 Day Abs (All 3×10-12)
+  TWO_DAY // 2 Day Abs (All 3×10-12)
   THREE_DAY // 3 Day Abs (All 3×10-12)
 }
 
@@ -253,8 +253,8 @@ model User {
   totalWorkouts  Int       @default(0)
 
   // Account Status
-  isActive      Boolean   @default(true)
-  emailVerified Boolean   @default(false)
+  isActive      Boolean @default(true)
+  emailVerified Boolean @default(false)
 
   // Timestamps
   createdAt   DateTime  @default(now())
@@ -262,23 +262,23 @@ model User {
   lastLoginAt DateTime?
 
   // Relations
-  sessions             Session[]
-  subscription         Subscription?
-  coachProfile         CoachProfile?
-  clientProfile        ClientProfile?
-  activeProgram        UserActiveProgram?
-  userPrograms         UserProgram[]
-  workoutLogs          WorkoutLog[]
-  bodyDimensions       BodyDimension[]
-  notifications        Notification[]
-  supplementTracking   UserSupplementTracking[]
-  proteinCalculations  ProteinCalculation[]
-  waterIntakeLog       WaterIntakeLog[]
-  affiliatePurchases   AffiliatePurchase[]
-  reviewsGiven         ProgramReview[]
-  pushTokens           PushToken[]
-  parqSubmissions      ParqSubmission[]         // as coached user
-  favoriteExercises    UserFavoriteExercise[]
+  sessions            Session[]
+  subscription        Subscription?
+  coachProfile        CoachProfile?
+  clientProfile       ClientProfile?
+  activeProgram       UserActiveProgram?
+  userPrograms        UserProgram[]
+  workoutLogs         WorkoutLog[]
+  bodyDimensions      BodyDimension[]
+  notifications       Notification[]
+  supplementTracking  UserSupplementTracking[]
+  proteinCalculations ProteinCalculation[]
+  waterIntakeLog      WaterIntakeLog[]
+  affiliatePurchases  AffiliatePurchase[]
+  reviewsGiven        ProgramReview[]
+  pushTokens          PushToken[]
+  parqSubmissions     ParqSubmission[] // as coached user
+  favoriteExercises   UserFavoriteExercise[]
 
   @@index([email])
   @@index([isPremium])
@@ -346,29 +346,29 @@ model Subscription {
 // ══════════════════════════════════════════════════════════════
 
 model CoachProfile {
-  id          String  @id @default(cuid())
-  userId      String  @unique
-  bio         String?
-  specialties String[] @default([])
-  certifications String[] @default([])
-  profilePhoto String?
-  phoneNumber  String?
-  isVerified   Boolean @default(false)
-  isActive     Boolean @default(true)
-  rating       Float   @default(0)
-  totalReviews Int     @default(0)
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  bio               String?
+  specialties       String[] @default([])
+  certifications    String[] @default([])
+  profilePhoto      String?
+  phoneNumber       String?
+  isVerified        Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  rating            Float    @default(0)
+  totalReviews      Int      @default(0)
   // Stats
-  totalClients      Int @default(0)
-  totalSessionsHeld Int @default(0)
+  totalClients      Int      @default(0)
+  totalSessionsHeld Int      @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  clients         ClientProfile[]
-  availability    CoachAvailability[]
-  calendarSessions CoachSession[]
-  invitations     CoachInvitation[]
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clients           ClientProfile[]
+  availability      CoachAvailability[]
+  calendarSessions  CoachSession[]
+  invitations       CoachInvitation[]
   affiliateProducts CoachAffiliateProduct[]
 
   @@index([userId])
@@ -381,10 +381,10 @@ model CoachProfile {
 // ══════════════════════════════════════════════════════════════
 
 model ClientProfile {
-  id        String       @id @default(cuid())
-  userId    String       @unique
-  coachId   String
-  status    ClientStatus @default(PENDING_PAR_Q)
+  id      String       @id @default(cuid())
+  userId  String       @unique
+  coachId String
+  status  ClientStatus @default(PENDING_PAR_Q)
 
   // Joined via invitation
   invitationId String?
@@ -392,9 +392,9 @@ model ClientProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  coach    CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  sessions CoachSession[]
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coach           CoachProfile     @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  sessions        CoachSession[]
   parqSubmissions ParqSubmission[]
 
   @@index([coachId])
@@ -413,7 +413,7 @@ model CoachInvitation {
   code      String   @unique // short code
   link      String   @unique // full URL
   isUsed    Boolean  @default(false)
-  usedBy    String?  // userId who used it
+  usedBy    String? // userId who used it
   expiresAt DateTime
   createdAt DateTime @default(now())
 
@@ -430,29 +430,29 @@ model CoachInvitation {
 // ══════════════════════════════════════════════════════════════
 
 model ParqSubmission {
-  id             String   @id @default(cuid())
-  userId         String
-  clientProfileId String
+  id                      String    @id @default(cuid())
+  userId                  String
+  clientProfileId         String
   // General Health
-  hasHeartCondition      Boolean
+  hasHeartCondition       Boolean
   chestPainDuringActivity Boolean
-  chestPainAtRest        Boolean
-  losesBalanceDizziness  Boolean
+  chestPainAtRest         Boolean
+  losesBalanceDizziness   Boolean
   // Blood Pressure & Cardiovascular
-  hasHighBloodPressure   Boolean
-  doctorLimitedActivity  Boolean
+  hasHighBloodPressure    Boolean
+  doctorLimitedActivity   Boolean
   // Musculoskeletal
-  hasBoneJointProblem    Boolean
-  takingPrescription     Boolean
+  hasBoneJointProblem     Boolean
+  takingPrescription      Boolean
   // Other
-  hasOtherReason         Boolean
-  otherReasonDetails     String?
+  hasOtherReason          Boolean
+  otherReasonDetails      String?
   // Signature & Date
-  signature              String?  // base64 or URL
-  signedAt               DateTime?
-  isApproved             Boolean @default(false)
-  reviewedByCoachAt      DateTime?
-  createdAt              DateTime @default(now())
+  signature               String? // base64 or URL
+  signedAt                DateTime?
+  isApproved              Boolean   @default(false)
+  reviewedByCoachAt       DateTime?
+  createdAt               DateTime  @default(now())
 
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   clientProfile ClientProfile @relation(fields: [clientProfileId], references: [id], onDelete: Cascade)
@@ -477,7 +477,7 @@ model CoachAvailability {
   isBooked  Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  coach    CoachProfile  @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  coach    CoachProfile   @relation(fields: [coachId], references: [id], onDelete: Cascade)
   sessions CoachSession[]
 
   @@index([coachId])
@@ -496,7 +496,7 @@ model CoachSession {
   clientProfileId String
   availabilityId  String?
   status          SessionStatus @default(REQUESTED)
-  sessionType     String?       // e.g. "Strength Training"
+  sessionType     String? // e.g. "Strength Training"
   scheduledAt     DateTime
   durationMinutes Int           @default(60)
   notes           String?
@@ -506,9 +506,9 @@ model CoachSession {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  coach         CoachProfile       @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  client        ClientProfile      @relation(fields: [clientProfileId], references: [id], onDelete: Cascade)
-  availability  CoachAvailability? @relation(fields: [availabilityId], references: [id])
+  coach        CoachProfile       @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  client       ClientProfile      @relation(fields: [clientProfileId], references: [id], onDelete: Cascade)
+  availability CoachAvailability? @relation(fields: [availabilityId], references: [id])
 
   @@index([coachId])
   @@index([clientProfileId])
@@ -526,15 +526,15 @@ model TrainingMethod {
   name        String             @unique // "5x5", "Max-OT", etc.
   type        TrainingMethodType
   description String
-  setsInfo    String?  // "5 sets of 5 heavy reps"
-  repRange    String?  // "4-6"
-  restPeriod  String?  // "2-3 min"
-  intensity   String?  // "High"
+  setsInfo    String? // "5 sets of 5 heavy reps"
+  repRange    String? // "4-6"
+  restPeriod  String? // "2-3 min"
+  intensity   String? // "High"
   notes       String?
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive    Boolean            @default(true)
+  sortOrder   Int                @default(0)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
   weeklyAssignments ProgramWeekTrainingMethod[]
   workoutSessions   WorkoutSession[]
@@ -548,28 +548,28 @@ model TrainingMethod {
 // ══════════════════════════════════════════════════════════════
 
 model Program {
-  id             String            @id @default(cuid())
-  name           String
-  description    String?
-  type           ProgramType       @default(BUILTIN)
-  difficulty     ProgramDifficulty @default(INTERMEDIATE)
-  durationWeeks  Int
-  daysPerWeek    Int
-  daySplitType   DaySplitType      @default(PUSH_PULL_LEGS)
-  isPremium      Boolean           @default(false)
-  isActive       Boolean           @default(true)
-  isPublished    Boolean           @default(false)
-  thumbnailUrl   String?
-  sortOrder      Int               @default(0)
+  id            String            @id @default(cuid())
+  name          String
+  description   String?
+  type          ProgramType       @default(BUILTIN)
+  difficulty    ProgramDifficulty @default(INTERMEDIATE)
+  durationWeeks Int
+  daysPerWeek   Int
+  daySplitType  DaySplitType      @default(PUSH_PULL_LEGS)
+  isPremium     Boolean           @default(false)
+  isActive      Boolean           @default(true)
+  isPublished   Boolean           @default(false)
+  thumbnailUrl  String?
+  sortOrder     Int               @default(0)
 
   // Features/tags for display
-  features       String[]          @default([])
-  tags           String[]          @default([])
+  features String[] @default([])
+  tags     String[] @default([])
 
   // Program metadata
-  hasBFR         Boolean           @default(false)
-  hasAbsWorkout  Boolean           @default(false)
-  hasActivation  Boolean           @default(false)
+  hasBFR        Boolean @default(false)
+  hasAbsWorkout Boolean @default(false)
+  hasActivation Boolean @default(false)
 
   // Creator (null = Admin/builtin)
   createdByUserId String?
@@ -577,13 +577,13 @@ model Program {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  weeks              ProgramWeek[]
-  userPrograms       UserProgram[]
-  activePrograms     UserActiveProgram[]
-  reviews            ProgramReview[]
-  homePageContents   HomePageContent[]
-  weekLockConfigs    PremiumWeekLockConfig[]
-  analytics          ProgramAnalytics?
+  weeks            ProgramWeek[]
+  userPrograms     UserProgram[]
+  activePrograms   UserActiveProgram[]
+  reviews          ProgramReview[]
+  homePageContents HomePageContent[]
+  weekLockConfigs  PremiumWeekLockConfig[]
+  analytics        ProgramAnalytics?
 
   @@index([type])
   @@index([isPremium])
@@ -596,13 +596,13 @@ model Program {
 // ══════════════════════════════════════════════════════════════
 
 model ProgramWeek {
-  id        String @id @default(cuid())
-  programId String
+  id         String  @id @default(cuid())
+  programId  String
   weekNumber Int
-  isPremium Boolean @default(false) // premium-locked week
-  notes     String?
+  isPremium  Boolean @default(false) // premium-locked week
+  notes      String?
 
-  program         Program                      @relation(fields: [programId], references: [id], onDelete: Cascade)
+  program         Program                     @relation(fields: [programId], references: [id], onDelete: Cascade)
   days            ProgramDay[]
   trainingMethods ProgramWeekTrainingMethod[]
 
@@ -616,10 +616,10 @@ model ProgramWeek {
 // ══════════════════════════════════════════════════════════════
 
 model ProgramWeekTrainingMethod {
-  id               String          @id @default(cuid())
+  id               String         @id @default(cuid())
   programWeekId    String
   trainingMethodId String
-  dayType          WorkoutDayType  // PUSH, PULL, LEGS
+  dayType          WorkoutDayType // PUSH, PULL, LEGS
 
   programWeek    ProgramWeek    @relation(fields: [programWeekId], references: [id], onDelete: Cascade)
   trainingMethod TrainingMethod @relation(fields: [trainingMethodId], references: [id])
@@ -636,14 +636,14 @@ model ProgramWeekTrainingMethod {
 model ProgramDay {
   id            String         @id @default(cuid())
   programWeekId String
-  dayNumber     Int            // 1-7
-  dayType       WorkoutDayType
-  name          String?        // "Push Day", "Chest, Shoulders & Triceps"
+  dayNumber     Int // 1-7
+  dayType       WorkoutDayType // optional
+  name          String? // "Push Day", "Chest, Shoulders & Triceps"
   isRestDay     Boolean        @default(false)
   notes         String?
 
-  programWeek ProgramWeek     @relation(fields: [programWeekId], references: [id], onDelete: Cascade)
-  exercises   ProgramDayExercise[]
+  programWeek     ProgramWeek          @relation(fields: [programWeekId], references: [id], onDelete: Cascade)
+  exercises       ProgramDayExercise[]
   workoutSessions WorkoutSession[]
 
   @@unique([programWeekId, dayNumber])
@@ -656,24 +656,24 @@ model ProgramDay {
 // ══════════════════════════════════════════════════════════════
 
 model Exercise {
-  id              String           @id @default(cuid())
-  name            String
-  description     String?
-  instructions    String?
-  category        ExerciseCategory
-  primaryMuscle   MuscleGroup
-  secondaryMuscles MuscleGroup[]   @default([])
-  equipment       EquipmentType    @default(NONE)
-  thumbnailUrl    String?
-  videoUrl        String?
-  gifUrl          String?
-  isActive        Boolean          @default(true)
-  isPublished     Boolean          @default(true)
+  id               String           @id @default(cuid())
+  name             String
+  description      String?
+  instructions     String?
+  category         ExerciseCategory // no need or optional 
+  primaryMuscle    MuscleGroup // no need or optional 
+  secondaryMuscles MuscleGroup[]    @default([])
+  equipment        EquipmentType    @default(NONE)
+  thumbnailUrl     String?
+  videoUrl         String?
+  gifUrl           String?
+  isActive         Boolean          @default(true)
+  isPublished      Boolean          @default(true)
   // Admin fields
   createdByAdminId String?
-  sortOrder        Int             @default(0)
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  sortOrder        Int              @default(0)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   programDayExercises ProgramDayExercise[]
   workoutSetLogs      WorkoutSetLog[]
@@ -691,24 +691,24 @@ model Exercise {
 // ══════════════════════════════════════════════════════════════
 
 model ProgramDayExercise {
-  id            String   @id @default(cuid())
+  id            String  @id @default(cuid())
   programDayId  String
   exerciseId    String
-  sortOrder     Int      @default(0)
+  sortOrder     Int     @default(0)
   // sets          Int
-  reps          String   // "5" or "10-12" or "AMRAP"
-  restSeconds   Int?     // seconds
-  setType       SetType  @default(NORMAL)
-  isOptional    Boolean  @default(false)
-  notes         String?  // "Heavy weight, 2-3 min rest"
+  reps          String // "5" or "10-12" or "AMRAP"
+  restSeconds   Int? // seconds
+  setType       SetType @default(NORMAL)
+  isOptional    Boolean @default(false)
+  notes         String? // "Heavy weight, 2-3 min rest"
   // BFR/Abs flags
-  isBFR         Boolean  @default(false)
-  isAbs         Boolean  @default(false)
-  isAccessory   Boolean  @default(false)
-  accessoryNote String?  // "Close Grip flat bench press"
+  isBFR         Boolean @default(false)
+  isAbs         Boolean @default(false)
+  isAccessory   Boolean @default(false)
+  accessoryNote String? // "Close Grip flat bench press"
 
-  programDay ProgramDay @relation(fields: [programDayId], references: [id], onDelete: Cascade)
-  exercise   Exercise   @relation(fields: [exerciseId], references: [id])
+  programDay ProgramDay              @relation(fields: [programDayId], references: [id], onDelete: Cascade)
+  exercise   Exercise                @relation(fields: [exerciseId], references: [id])
   sets       ProgramDayExerciseSet[]
 
   @@index([programDayId])
@@ -721,15 +721,15 @@ model ProgramDayExercise {
 // ══════════════════════════════════════════════════════════════
 
 model UserActiveProgram {
-  id            String    @id @default(cuid())
-  userId        String    @unique
-  programId     String
-  startedAt     DateTime  @default(now())
-  currentWeek   Int       @default(1)
-  currentDay    Int       @default(1)
+  id             String         @id @default(cuid())
+  userId         String         @unique
+  programId      String
+  startedAt      DateTime       @default(now())
+  currentWeek    Int            @default(1)
+  currentDay     Int            @default(1)
   // Abs preference
   absWorkoutType AbsWorkoutType @default(TWO_DAY)
-  bfrEnabled    Boolean   @default(false)
+  bfrEnabled     Boolean        @default(false)
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   program Program @relation(fields: [programId], references: [id])
@@ -744,14 +744,14 @@ model UserActiveProgram {
 // ══════════════════════════════════════════════════════════════
 
 model UserProgram {
-  id          String    @id @default(cuid())
-  userId      String
-  programId   String
-  startedAt   DateTime  @default(now())
-  completedAt DateTime?
-  isCompleted Boolean   @default(false)
-  totalWeeks  Int
-  completedWeeks Int    @default(0)
+  id             String    @id @default(cuid())
+  userId         String
+  programId      String
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  isCompleted    Boolean   @default(false)
+  totalWeeks     Int
+  completedWeeks Int       @default(0)
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   program Program @relation(fields: [programId], references: [id])
@@ -766,21 +766,21 @@ model UserProgram {
 // ══════════════════════════════════════════════════════════════
 
 model WorkoutLog {
-  id             String        @id @default(cuid())
-  userId         String
-  programDayId   String?       // null for freestyle
-  programId      String?
-  weekNumber     Int?
-  dayNumber      Int?
-  status         WorkoutStatus @default(PENDING)
-  scheduledDate  DateTime      @db.Date
-  startedAt      DateTime?
-  completedAt    DateTime?
+  id              String        @id @default(cuid())
+  userId          String
+  programDayId    String? // null for freestyle
+  programId       String?
+  weekNumber      Int?
+  dayNumber       Int?
+  status          WorkoutStatus @default(PENDING)
+  scheduledDate   DateTime      @db.Date
+  startedAt       DateTime?
+  completedAt     DateTime?
   durationSeconds Int?
-  notes          String?
-  totalVolume    Float?        // total kg lifted
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  notes           String?
+  totalVolume     Float? // total kg lifted
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   workoutSessions WorkoutSession[]
@@ -797,11 +797,11 @@ model WorkoutLog {
 // ══════════════════════════════════════════════════════════════
 
 model WorkoutSession {
-  id               String   @id @default(cuid())
+  id               String  @id @default(cuid())
   workoutLogId     String
   programDayId     String?
   trainingMethodId String?
-  sortOrder        Int      @default(0)
+  sortOrder        Int     @default(0)
   notes            String?
 
   workoutLog     WorkoutLog      @relation(fields: [workoutLogId], references: [id], onDelete: Cascade)
@@ -818,21 +818,21 @@ model WorkoutSession {
 // ══════════════════════════════════════════════════════════════
 
 model WorkoutSetLog {
-  id               String   @id @default(cuid())
-  workoutSessionId String
-  exerciseId       String
-  setNumber        Int
-  plannedReps      Int?
-  actualReps       Int?
-  weight           Float?   // in user's preferred unit
-  weightUnit       WeightUnit @default(KG)
-  isCompleted      Boolean  @default(false)
-  completionPercent Int?    // 100%, 97%, etc.
-  setType          SetType  @default(NORMAL)
-  restStartedAt    DateTime?
-  restEndedAt      DateTime?
-  notes            String?
-  createdAt        DateTime @default(now())
+  id                String     @id @default(cuid())
+  workoutSessionId  String
+  exerciseId        String
+  setNumber         Int
+  plannedReps       Int?
+  actualReps        Int?
+  weight            Float? // in user's preferred unit
+  weightUnit        WeightUnit @default(KG)
+  isCompleted       Boolean    @default(false)
+  completionPercent Int? // 100%, 97%, etc.
+  setType           SetType    @default(NORMAL)
+  restStartedAt     DateTime?
+  restEndedAt       DateTime?
+  notes             String?
+  createdAt         DateTime   @default(now())
 
   workoutSession WorkoutSession @relation(fields: [workoutSessionId], references: [id], onDelete: Cascade)
   exercise       Exercise       @relation(fields: [exerciseId], references: [id])
@@ -855,8 +855,8 @@ model BodyDimension {
   measureUnit    MeasurementUnit @default(CM)
   height         Float?
   waist          Float?
-  leg            Float?          // high circumference, 5.5in from mid knee
-  arm            Float?          // circumference at center of bicep
+  leg            Float? // high circumference, 5.5in from mid knee
+  arm            Float? // circumference at center of bicep
   bodyFatPercent Float?
   notes          String?
   createdAt      DateTime        @default(now())
@@ -873,10 +873,10 @@ model BodyDimension {
 // ══════════════════════════════════════════════════════════════
 
 model ProgramReview {
-  id        String @id @default(cuid())
+  id        String   @id @default(cuid())
   programId String
   userId    String
-  rating    Int    // 1-5
+  rating    Int // 1-5
   comment   String?
   createdAt DateTime @default(now())
 
@@ -893,18 +893,18 @@ model ProgramReview {
 // ══════════════════════════════════════════════════════════════
 
 model Supplement {
-  id          String             @id @default(cuid())
-  name        String
-  category    SupplementCategory
-  description String?
-  dosage      String             // "3-5g daily"
-  timing      String             // "Any time"
-  notes       String?            // "Isolate recommended for fat loss"
-  isRecommended Boolean          @default(false)
-  sortOrder   Int                @default(0)
-  isActive    Boolean            @default(true)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id            String             @id @default(cuid())
+  name          String
+  category      SupplementCategory
+  description   String?
+  dosage        String // "3-5g daily"
+  timing        String // "Any time"
+  notes         String? // "Isolate recommended for fat loss"
+  isRecommended Boolean            @default(false)
+  sortOrder     Int                @default(0)
+  isActive      Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 
   affiliateProducts AffiliateProduct[]
   userTracking      UserSupplementTracking[]
@@ -918,26 +918,26 @@ model Supplement {
 // ══════════════════════════════════════════════════════════════
 
 model AffiliateProduct {
-  id             String   @id @default(cuid())
-  supplementId   String?
-  name           String
-  brand          String?
-  description    String?
-  imageUrl       String?
-  price          Float
-  currency       String   @default("USD")
-  affiliateUrl   String   // external purchase link
-  sellerName     String?  // "SupplementHub"
-  features       String[] @default([])
-  isActive       Boolean  @default(true)
-  isVerified     Boolean  @default(false) // third-party tested etc.
-  sortOrder      Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id           String   @id @default(cuid())
+  supplementId String?
+  name         String
+  brand        String?
+  description  String?
+  imageUrl     String?
+  price        Float
+  currency     String   @default("USD")
+  affiliateUrl String // external purchase link
+  sellerName   String? // "SupplementHub"
+  features     String[] @default([])
+  isActive     Boolean  @default(true)
+  isVerified   Boolean  @default(false) // third-party tested etc.
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  supplement         Supplement?              @relation(fields: [supplementId], references: [id])
-  purchases          AffiliatePurchase[]
-  coachAffiliates    CoachAffiliateProduct[]
+  supplement      Supplement?             @relation(fields: [supplementId], references: [id])
+  purchases       AffiliatePurchase[]
+  coachAffiliates CoachAffiliateProduct[]
 
   @@index([supplementId])
   @@index([isActive])
@@ -949,15 +949,15 @@ model AffiliateProduct {
 // ══════════════════════════════════════════════════════════════
 
 model CoachAffiliateProduct {
-  id               String   @id @default(cuid())
-  coachId          String
+  id                 String   @id @default(cuid())
+  coachId            String
   affiliateProductId String
-  customLink       String?  // coach's unique affiliate link
-  commissionRate   Float?   // percentage
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
+  customLink         String? // coach's unique affiliate link
+  commissionRate     Float? // percentage
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
 
-  coach          CoachProfile   @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  coach            CoachProfile     @relation(fields: [coachId], references: [id], onDelete: Cascade)
   affiliateProduct AffiliateProduct @relation(fields: [affiliateProductId], references: [id])
 
   @@unique([coachId, affiliateProductId])
@@ -970,16 +970,16 @@ model CoachAffiliateProduct {
 // ══════════════════════════════════════════════════════════════
 
 model AffiliatePurchase {
-  id               String   @id @default(cuid())
-  userId           String
+  id                 String   @id @default(cuid())
+  userId             String
   affiliateProductId String
-  referringCoachId String?
-  amount           Float
-  currency         String   @default("USD")
-  purchasedAt      DateTime @default(now())
-  orderId          String?  // external order reference
+  referringCoachId   String?
+  amount             Float
+  currency           String   @default("USD")
+  purchasedAt        DateTime @default(now())
+  orderId            String? // external order reference
 
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   affiliateProduct AffiliateProduct @relation(fields: [affiliateProductId], references: [id])
 
   @@index([userId])
@@ -992,12 +992,12 @@ model AffiliatePurchase {
 // ══════════════════════════════════════════════════════════════
 
 model UserSupplementTracking {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String
   supplementId String
-  isActive     Boolean  @default(true)
+  isActive     Boolean   @default(true)
   notes        String?
-  startedAt    DateTime @default(now())
+  startedAt    DateTime  @default(now())
   stoppedAt    DateTime?
 
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1012,14 +1012,14 @@ model UserSupplementTracking {
 // ══════════════════════════════════════════════════════════════
 
 model ProteinCalculation {
-  id                String     @id @default(cuid())
-  userId            String
+  id                   String     @id @default(cuid())
+  userId               String
   targetLeanBodyWeight Float
-  weightUnit        WeightUnit @default(KG)
-  minGrams          Float
-  maxGrams          Float
-  goal              String?    // "maintenance", "bulking"
-  createdAt         DateTime   @default(now())
+  weightUnit           WeightUnit @default(KG)
+  minGrams             Float
+  maxGrams             Float
+  goal                 String? // "maintenance", "bulking"
+  createdAt            DateTime   @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1032,12 +1032,12 @@ model ProteinCalculation {
 // ══════════════════════════════════════════════════════════════
 
 model WaterIntakeLog {
-  id         String   @id @default(cuid())
-  userId     String
-  date       DateTime @db.Date
-  liters     Float
-  goal       Float    @default(3.5)
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime @db.Date
+  liters    Float
+  goal      Float    @default(3.5)
+  createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1053,7 +1053,7 @@ model WaterIntakeLog {
 model HealthCheckItem {
   id          String              @id @default(cuid())
   category    HealthCheckCategory
-  name        String              // "Testosterone levels (free and total)"
+  name        String // "Testosterone levels (free and total)"
   description String?
   sortOrder   Int                 @default(0)
   isActive    Boolean             @default(true)
@@ -1068,25 +1068,25 @@ model HealthCheckItem {
 // ══════════════════════════════════════════════════════════════
 
 model PartnerClinic {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  address     String
-  city        String
-  country     String
-  phone       String?
-  email       String?
-  website     String?
-  bookingUrl  String?
-  imageUrl    String?
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  address       String
+  city          String
+  country       String
+  phone         String?
+  email         String?
+  website       String?
+  bookingUrl    String?
+  imageUrl      String?
   distanceMiles Float?
   openingHours  String? // "8:00 AM - 6:00 PM"
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  latitude    Float?
-  longitude   Float?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  latitude      Float?
+  longitude     Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([country, city])
   @@map("partner_clinics")
@@ -1126,14 +1126,14 @@ model Gym {
 // ══════════════════════════════════════════════════════════════
 
 model ExecutionGuideline {
-  id          String   @id @default(cuid())
-  title       String
-  content     String
-  category    String?
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  category  String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("execution_guidelines")
 }
@@ -1146,9 +1146,9 @@ model EssentialContent {
   id          String   @id @default(cuid())
   title       String
   description String?
-  content     String   // rich text/markdown
+  content     String // rich text/markdown
   imageUrl    String?
-  category    String?  // "Health Foundation"
+  category    String? // "Health Foundation"
   sortOrder   Int      @default(0)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -1162,18 +1162,18 @@ model EssentialContent {
 // ══════════════════════════════════════════════════════════════
 
 model MediaAsset {
-  id          String    @id @default(cuid())
-  url         String    @unique
-  type        MediaType
-  fileName    String
-  fileSize    Int?      // bytes
-  mimeType    String?
-  width       Int?
-  height      Int?
-  altText     String?
-  uploadedBy  String?   // admin userId
-  isPublic    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
+  id         String    @id @default(cuid())
+  url        String    @unique
+  type       MediaType
+  fileName   String
+  fileSize   Int? // bytes
+  mimeType   String?
+  width      Int?
+  height     Int?
+  altText    String?
+  uploadedBy String? // admin userId
+  isPublic   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
 
   @@index([type])
   @@map("media_assets")
@@ -1189,7 +1189,7 @@ model Notification {
   type      NotificationType
   title     String
   body      String
-  data      Json?            // extra payload
+  data      Json? // extra payload
   isRead    Boolean          @default(false)
   readAt    DateTime?
   createdAt DateTime         @default(now())
@@ -1210,7 +1210,7 @@ model PushToken {
   id        String   @id @default(cuid())
   userId    String
   token     String   @unique
-  platform  String   // "ios" | "android" | "web"
+  platform  String // "ios" | "android" | "web"
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
@@ -1245,8 +1245,8 @@ model UserFavoriteExercise {
 model AdminActivityLog {
   id          String   @id @default(cuid())
   adminUserId String
-  action      String   // "CREATE_EXERCISE", "PUBLISH_PROGRAM", etc.
-  targetType  String?  // "Exercise", "Program", etc.
+  action      String // "CREATE_EXERCISE", "PUBLISH_PROGRAM", etc.
+  targetType  String? // "Exercise", "Program", etc.
   targetId    String?
   details     Json?
   ipAddress   String?
@@ -1267,7 +1267,7 @@ model AppConfig {
   key       String   @unique
   value     String
   type      String   @default("string") // "string" | "boolean" | "number" | "json"
-  group     String?  // "premium", "gym", "notifications"
+  group     String? // "premium", "gym", "notifications"
   updatedAt DateTime @updatedAt
   updatedBy String?
 
@@ -1330,9 +1330,9 @@ enum PremiumPlanBillingPeriod {
 }
 
 enum HomePageContentType {
-  PROGRAM        // links to a program
-  BANNER         // custom banner/image card
-  ANNOUNCEMENT   // text announcement
+  PROGRAM // links to a program
+  BANNER // custom banner/image card
+  ANNOUNCEMENT // text announcement
 }
 
 enum PaymentStatus {
@@ -1360,11 +1360,11 @@ enum UserActivityType {
 // ══════════════════════════════════════════════════════════════
 
 model ProgramDayExerciseSet {
-  id                   String   @id @default(cuid())
+  id                   String  @id @default(cuid())
   programDayExerciseId String
-  setNumber            Int      // 1, 2, 3 …
-  reps                 String   // "05", "12", "AMRAP", "10-12"
-  restSeconds          Int      // 60, 90, 120 …
+  setNumber            Int // 1, 2, 3 …
+  reps                 String // "05", "12", "AMRAP", "10-12"
+  restSeconds          Int // 60, 90, 120 …
   notes                String?
 
   programDayExercise ProgramDayExercise @relation(fields: [programDayExerciseId], references: [id], onDelete: Cascade)
@@ -1383,7 +1383,7 @@ model ExerciseMedia {
   exerciseId String
   type       MediaType // IMAGE | VIDEO | GIF
   url        String
-  label      String?   // "Exercise Image", "Exercise Animation"
+  label      String? // "Exercise Image", "Exercise Animation"
   sortOrder  Int       @default(0)
   createdAt  DateTime  @default(now())
 
@@ -1401,11 +1401,11 @@ model ExerciseMedia {
 model HomePageContent {
   id          String              @id @default(cuid())
   type        HomePageContentType @default(PROGRAM)
-  programId   String?             // if type = PROGRAM
-  title       String?             // custom title override
+  programId   String? // if type = PROGRAM
+  title       String? // custom title override
   description String?
   imageUrl    String?
-  position    Int                 // ordering position (1, 2, 3 …)
+  position    Int // ordering position (1, 2, 3 …)
   isActive    Boolean             @default(true)
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
@@ -1423,11 +1423,11 @@ model HomePageContent {
 // ══════════════════════════════════════════════════════════════
 
 model PremiumWeekLockConfig {
-  id            String   @id @default(cuid())
-  programId     String
-  weekNumber    Int
-  isPremiumLock Boolean  @default(false) // true = premium required
-  updatedAt     DateTime @updatedAt
+  id               String   @id @default(cuid())
+  programId        String
+  weekNumber       Int
+  isPremiumLock    Boolean  @default(false) // true = premium required
+  updatedAt        DateTime @updatedAt
   updatedByAdminId String?
 
   program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
@@ -1445,10 +1445,10 @@ model PremiumWeekLockConfig {
 
 model ExecutionNote {
   id           String   @id @default(cuid())
-  title        String   // "Workout Duration Rule"
+  title        String // "Workout Duration Rule"
   notes        String[] @default([]) // individual bullet notes
-  finalMessage String?  // bottom summary paragraph
-  position     Int      @default(0)  // ordering
+  finalMessage String? // bottom summary paragraph
+  position     Int      @default(0) // ordering
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -1467,22 +1467,22 @@ model BFRContent {
   category         BFRContentCategory // SAFETY_DISCLAIMER | BFR_SESSION | RESEARCH_AND_EDUCATION
   title            String
   shortDescription String?
-  richContent      String?            // HTML/Markdown rich text (safety info section)
+  richContent      String? // HTML/Markdown rich text (safety info section)
   finalMessage     String?
 
   // BFR_SESSION specific fields
-  sessionCategory  BFRSessionCategory? // Hypertrophy / Strength etc.
-  bodyType         BFRBodyType?         // Upper / Lower / Full Body
-  durationMinutes  Int?                 // e.g. 20
-  exerciseCount    Int?                 // e.g. 4
+  sessionCategory BFRSessionCategory? // Hypertrophy / Strength etc.
+  bodyType        BFRBodyType? // Upper / Lower / Full Body
+  durationMinutes Int? // e.g. 20
+  exerciseCount   Int? // e.g. 4
 
   // RESEARCH_AND_EDUCATION specific fields
-  researchCategory ResearchCategory?   // Basic / Advanced / Detail
+  researchCategory ResearchCategory? // Basic / Advanced / Detail
 
-  isActive   Boolean  @default(true)
-  sortOrder  Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([category])
   @@index([sessionCategory])
@@ -1498,7 +1498,7 @@ model BFRContent {
 model HealthMarkerGroup {
   id          String              @id @default(cuid())
   category    HealthCheckCategory
-  name        String              // "Hormonal Balance"
+  name        String // "Hormonal Balance"
   description String?
   sortOrder   Int                 @default(0)
   isActive    Boolean             @default(true)
@@ -1512,10 +1512,10 @@ model HealthMarkerGroup {
 }
 
 model HealthMarker {
-  id       String @id @default(cuid())
-  groupId  String
-  name     String // "Testosterone levels (free and total)"
-  sortOrder Int   @default(0)
+  id        String @id @default(cuid())
+  groupId   String
+  name      String // "Testosterone levels (free and total)"
+  sortOrder Int    @default(0)
 
   group HealthMarkerGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
@@ -1530,20 +1530,20 @@ model HealthMarker {
 // ══════════════════════════════════════════════════════════════
 
 model SupplementProduct {
-  id               String             @id @default(cuid())
-  name             String             // "Creatine HCL"
-  category         SupplementCategory // Foundation / Performance / Recovery / Optional
-  price            Float
-  currency         String             @default("USD")
-  vendorName       String?            // "OptimumNutrition"
-  purchasePageUrl  String             // affiliate purchase URL
-  benefits         String[]           @default([]) // ["No bloating", "Micronized", "Third-party tested"]
-  imageUrl         String?
-  inStock          Boolean            @default(true)
-  isActive         Boolean            @default(true)
-  sortOrder        Int                @default(0)
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id              String             @id @default(cuid())
+  name            String // "Creatine HCL"
+  category        SupplementCategory // Foundation / Performance / Recovery / Optional
+  price           Float
+  currency        String             @default("USD")
+  vendorName      String? // "OptimumNutrition"
+  purchasePageUrl String // affiliate purchase URL
+  benefits        String[]           @default([]) // ["No bloating", "Micronized", "Third-party tested"]
+  imageUrl        String?
+  inStock         Boolean            @default(true)
+  isActive        Boolean            @default(true)
+  sortOrder       Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   @@index([category])
   @@index([inStock])
@@ -1557,18 +1557,18 @@ model SupplementProduct {
 // ══════════════════════════════════════════════════════════════
 
 model SubscriptionPlanConfig {
-  id            String                   @id @default(cuid())
-  name          String                   // "Monthly Premium", "Yearly Premium", "Free"
-  plan          SubscriptionPlan         @unique
-  billingPeriod PremiumPlanBillingPeriod?
-  priceUSD      Float                    @default(0)
-  isPopular     Boolean                  @default(false)
-  savingsPercent Int?                    // e.g. 17 (for "Save 17%")
-  features      String[]                 @default([]) // feature bullet strings
-  stripePriceId String?
-  isActive      Boolean                  @default(true)
-  updatedAt     DateTime                 @updatedAt
-  updatedBy     String?
+  id             String                    @id @default(cuid())
+  name           String // "Monthly Premium", "Yearly Premium", "Free"
+  plan           SubscriptionPlan          @unique
+  billingPeriod  PremiumPlanBillingPeriod?
+  priceUSD       Float                     @default(0)
+  isPopular      Boolean                   @default(false)
+  savingsPercent Int? // e.g. 17 (for "Save 17%")
+  features       String[]                  @default([]) // feature bullet strings
+  stripePriceId  String?
+  isActive       Boolean                   @default(true)
+  updatedAt      DateTime                  @updatedAt
+  updatedBy      String?
 
   @@map("subscription_plan_configs")
 }
@@ -1580,20 +1580,20 @@ model SubscriptionPlanConfig {
 // ══════════════════════════════════════════════════════════════
 
 model PaymentTransaction {
-  id                String        @id @default(cuid())
-  userId            String
-  stripePaymentId   String?       @unique
-  stripeInvoiceId   String?       @unique
-  plan              SubscriptionPlan
-  amount            Float
-  currency          String        @default("USD")
-  status            PaymentStatus @default(PENDING)
-  description       String?
-  refundedAt        DateTime?
-  refundAmount      Float?
-  failureReason     String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  id              String           @id @default(cuid())
+  userId          String
+  stripePaymentId String?          @unique
+  stripeInvoiceId String?          @unique
+  plan            SubscriptionPlan
+  amount          Float
+  currency        String           @default("USD")
+  status          PaymentStatus    @default(PENDING)
+  description     String?
+  refundedAt      DateTime?
+  refundAmount    Float?
+  failureReason   String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@index([userId])
   @@index([status])
@@ -1608,16 +1608,16 @@ model PaymentTransaction {
 // ══════════════════════════════════════════════════════════════
 
 model PushNotificationTemplate {
-  id         String                       @id @default(cuid())
-  name       String                       // "Workout Reminder"
-  category   NotificationTemplateCategory // ENGAGEMENT | MOTIVATION | MARKETING
-  titleTemplate String                    // "Time to train, {name}!"
-  bodyTemplate  String                    // "Your workout is ready."
-  isEnabled  Boolean                      @default(false)
+  id            String                       @id @default(cuid())
+  name          String // "Workout Reminder"
+  category      NotificationTemplateCategory // ENGAGEMENT | MOTIVATION | MARKETING
+  titleTemplate String // "Time to train, {name}!"
+  bodyTemplate  String // "Your workout is ready."
+  isEnabled     Boolean                      @default(false)
   // scheduling
-  scheduledCron String?                   // cron expression for automated sends
-  updatedAt  DateTime                     @updatedAt
-  updatedBy  String?
+  scheduledCron String? // cron expression for automated sends
+  updatedAt     DateTime                     @updatedAt
+  updatedBy     String?
 
   blasts NotificationBlast[]
 
@@ -1630,17 +1630,17 @@ model PushNotificationTemplate {
 // ══════════════════════════════════════════════════════════════
 
 model NotificationBlast {
-  id           String               @id @default(cuid())
-  templateId   String?              // null = custom blast
-  audience     NotificationAudience @default(ALL_USERS)
-  title        String
-  message      String
+  id            String               @id @default(cuid())
+  templateId    String? // null = custom blast
+  audience      NotificationAudience @default(ALL_USERS)
+  title         String
+  message       String
   sentByAdminId String
-  scheduledAt  DateTime?            // null = send now
-  sentAt       DateTime?
-  totalSent    Int                  @default(0)
-  totalFailed  Int                  @default(0)
-  createdAt    DateTime             @default(now())
+  scheduledAt   DateTime? // null = send now
+  sentAt        DateTime?
+  totalSent     Int                  @default(0)
+  totalFailed   Int                  @default(0)
+  createdAt     DateTime             @default(now())
 
   template PushNotificationTemplate? @relation(fields: [templateId], references: [id])
 
@@ -1655,19 +1655,19 @@ model NotificationBlast {
 // ══════════════════════════════════════════════════════════════
 
 model PlatformAnalyticsSnapshot {
-  id               String   @id @default(cuid())
-  date             DateTime @db.Date @unique
-  totalUsers       Int      @default(0)
-  premiumUsers     Int      @default(0)
-  freeUsers        Int      @default(0)
-  trialUsers       Int      @default(0)
-  expiredUsers     Int      @default(0)
-  activeEnrollments Int     @default(0)
-  totalCoaches     Int      @default(0)
-  coachedClients   Int      @default(0)
-  monthlyRevenue   Float    @default(0)
-  newUsersToday    Int      @default(0)
-  createdAt        DateTime @default(now())
+  id                String   @id @default(cuid())
+  date              DateTime @unique @db.Date
+  totalUsers        Int      @default(0)
+  premiumUsers      Int      @default(0)
+  freeUsers         Int      @default(0)
+  trialUsers        Int      @default(0)
+  expiredUsers      Int      @default(0)
+  activeEnrollments Int      @default(0)
+  totalCoaches      Int      @default(0)
+  coachedClients    Int      @default(0)
+  monthlyRevenue    Float    @default(0)
+  newUsersToday     Int      @default(0)
+  createdAt         DateTime @default(now())
 
   @@index([date])
   @@map("platform_analytics_snapshots")
@@ -1680,11 +1680,11 @@ model PlatformAnalyticsSnapshot {
 // ══════════════════════════════════════════════════════════════
 
 model UserActivityLog {
-  id         String           @id @default(cuid())
-  userId     String
-  type       UserActivityType
-  meta       Json?            // e.g. { programName: "Monster Mass Builder" }
-  createdAt  DateTime         @default(now())
+  id        String           @id @default(cuid())
+  userId    String
+  type      UserActivityType
+  meta      Json? // e.g. { programName: "Monster Mass Builder" }
+  createdAt DateTime         @default(now())
 
   @@index([userId])
   @@index([type])
@@ -1699,14 +1699,14 @@ model UserActivityLog {
 // ══════════════════════════════════════════════════════════════
 
 model ProgramAnalytics {
-  id               String   @id @default(cuid())
-  programId        String   @unique
-  totalEnrollments Int      @default(0)
-  activeEnrollments Int     @default(0)
-  completedCount   Int      @default(0)
-  completionRate   Float    @default(0)  // 0-100 %
-  avgWeeksCompleted Float   @default(0)
-  updatedAt        DateTime @updatedAt
+  id                String   @id @default(cuid())
+  programId         String   @unique
+  totalEnrollments  Int      @default(0)
+  activeEnrollments Int      @default(0)
+  completedCount    Int      @default(0)
+  completionRate    Float    @default(0) // 0-100 %
+  avgWeeksCompleted Float    @default(0)
+  updatedAt         DateTime @updatedAt
 
   program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
 

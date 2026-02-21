@@ -8,7 +8,6 @@ import { FirebaseModule } from './common/firebase/firebase.module';
 import { EmailModule } from './common/email/email.module';
 import { AuthModule } from './modules/auth/auth.module';
 
-import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { ValidationPipe } from './common/pipes/validation.pipe';
 import configuration from './config/configuration';
