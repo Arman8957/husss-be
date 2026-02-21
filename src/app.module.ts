@@ -13,6 +13,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { ValidationPipe } from './common/pipes/validation.pipe';
 import configuration from './config/configuration';
 import { AuditModule } from './common/audit/audit.module';
+import { ProgramsModule } from './modules/programs/programs.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { AuditModule } from './common/audit/audit.module';
     EmailModule,
     AuthModule,
     AuditModule,
+    ProgramsModule,
   ],
   providers: [
 
