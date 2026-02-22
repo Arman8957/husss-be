@@ -360,6 +360,7 @@ model CoachProfile {
   totalReviews      Int      @default(0)
   // Stats
   totalClients      Int      @default(0)
+
   totalSessionsHeld Int      @default(0)
 
   createdAt DateTime @default(now())
