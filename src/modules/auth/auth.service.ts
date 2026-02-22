@@ -1,19 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// FILE: auth.service.ts
-//
-// THE ONE CHANGE:
-//   registerCoach() previously returned { message, userId } — a plain object.
-//   Now it calls this.createSession() at the end, exactly like register().
-//   This means coach signup returns { accessToken, refreshToken, sessionId, user }
-//   and the coach is immediately logged in, just like a normal user.
-//
-//   The coach's coachProfile.isActive remains false until an admin approves.
-//   That's a separate concern — the account works for login, the coach
-//   feature access is gated by coachProfile.isActive in your business logic.
-//
-// EVERYTHING ELSE IS UNCHANGED — only registerCoach() is modified.
-// ─────────────────────────────────────────────────────────────────────────────
-
 import {
   Injectable, ConflictException, UnauthorizedException,
   BadRequestException, ForbiddenException, NotFoundException, Logger,
@@ -120,24 +104,7 @@ export class AuthService {
     return this.createSession(user.id, deviceInfo, ipAddress);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // registerCoach — THE FIXED METHOD
-  //
-  // BEFORE (broken):
-  //   return { message: '...', userId: user.id }
-  //   → Coach got no tokens, could not log in
-  //
-  // AFTER (fixed):
-  //   return this.createSession(user.id, deviceInfo, ipAddress)
-  //   → Returns { accessToken, refreshToken, sessionId, user }
-  //   → Exactly the same shape as register() and login()
-  //   → Coach is logged in immediately after signing up
-  //
-  // The coachProfile.isActive = false gate still works independently.
-  // Your business logic (e.g. in a CoachGuard or a coach-specific endpoint)
-  // should check coachProfile.isActive before granting coach features.
-  // The user account itself is active — they can log in and use user features.
-  // ─────────────────────────────────────────────────────────────────────────
+ 
   async registerCoach(dto: CoachRegisterDto, deviceInfo?: string, ipAddress?: string) {
     const normalizedEmail = dto.email.toLowerCase().trim();
 
