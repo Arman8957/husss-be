@@ -13,6 +13,10 @@ import { ValidationPipe } from './common/pipes/validation.pipe';
 import configuration from './config/configuration';
 import { AuditModule } from './common/audit/audit.module';
 import { ProgramsModule } from './modules/programs/programs.module';
+import { BrfModule } from './modules/brf/brf.module';
+import { ExecutionNoteModule } from './modules/execution-note/execution-note.module';
+import { ResearchAndEducationModule } from './modules/research-and-educaion/research-and-educaion.module';
+
 
 @Module({
   imports: [
@@ -37,6 +41,9 @@ import { ProgramsModule } from './modules/programs/programs.module';
     AuthModule,
     AuditModule,
     ProgramsModule,
+    BrfModule,
+    ExecutionNoteModule,
+    ResearchAndEducationModule,
   ],
   providers: [
 

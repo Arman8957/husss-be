@@ -347,21 +347,23 @@ model Subscription {
 // ══════════════════════════════════════════════════════════════
 
 model CoachProfile {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  bio               String?
-  specialties       String[] @default([])
-  certifications    String[] @default([])
-  profilePhoto      String?
-  phoneNumber       String?
-  isVerified        Boolean  @default(false)
-  isActive          Boolean  @default(true)
-  rating            Float    @default(0)
-  totalReviews      Int      @default(0)
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  bio            String?
+  gymName        String?
+  gymLocation    String?
+  specialties    String[] @default([])
+  certifications String[] @default([])
+  profilePhoto   String?
+  phoneNumber    String?
+  isVerified     Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  rating         Float    @default(0)
+  totalReviews   Int      @default(0)
   // Stats
-  totalClients      Int      @default(0)
+  totalClients   Int      @default(0)
 
-  totalSessionsHeld Int      @default(0)
+  totalSessionsHeld Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1715,3 +1717,6 @@ model ProgramAnalytics {
 
   @@map("program_analytics")
 }
+
+
+
