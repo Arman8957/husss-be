@@ -27,22 +27,28 @@ export class ProgramsService {
   // STEP 1 — Basic Info
   // ═══════════════════════════════════════════════════════════
 
-  async create(dto: CreateProgramDto, adminUserId: string) {
+ async create(dto: CreateProgramDto, adminUserId: string) {
     const program = await this.prisma.program.create({
       data: {
-        name: dto.name,
-        type: dto.type ?? ProgramType.BUILTIN,
-        difficulty: dto.difficulty ?? 'INTERMEDIATE',
+        name:          dto.name,
+        type:          dto.type          ?? ProgramType.BUILTIN,
+        difficulty:    dto.difficulty    ?? 'INTERMEDIATE',
         durationWeeks: dto.durationWeeks,
-        daysPerWeek: 0,
-        daySplitType: dto.daySplitType ?? 'PUSH_PULL_LEGS',
-        description: dto.description ?? null,
-        isPremium: dto.isPremium ?? false,
-        isActive: dto.isActive ?? true,
-        isPublished: false,
-        features: dto.features ?? [],
-        tags: dto.tags ?? [],
-        thumbnailUrl: dto.thumbnailUrl ?? null,
+        daysPerWeek:   0,
+        daySplitType:  dto.daySplitType  ?? 'PUSH_PULL_LEGS',
+        description:   dto.description   ?? null,
+        isPremium:     dto.isPremium     ?? false,
+        isActive:      dto.isActive      ?? true,
+        isPublished:   false,
+        features:      dto.features      ?? [],
+        tags:          dto.tags          ?? [],
+        thumbnailUrl:  dto.thumbnailUrl  ?? null,
+        // ── NEW FIELDS ──────────────────────────────────────
+        trainingDays:  dto.trainingDays  ?? [],   // e.g. ["1","3","5"]
+        restDays:      dto.restDays      ?? [],   // e.g. ["2","4","6","7"]
+        dayFocus:      dto.dayFocus      ?? [],   // e.g. ["Push","Pull","Legs"]
+        accessories:   dto.accessories   ?? [],   // e.g. ["Low to high rope pull"]
+        // ────────────────────────────────────────────────────
         createdByUserId: adminUserId,
       },
     });
@@ -61,23 +67,30 @@ export class ProgramsService {
     const updated = await this.prisma.program.update({
       where: { id: programId },
       data: {
-        ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.type !== undefined && { type: dto.type }),
-        ...(dto.difficulty !== undefined && { difficulty: dto.difficulty }),
+        ...(dto.name          !== undefined && { name:          dto.name }),
+        ...(dto.type          !== undefined && { type:          dto.type }),
+        ...(dto.difficulty    !== undefined && { difficulty:    dto.difficulty }),
         ...(dto.durationWeeks !== undefined && { durationWeeks: dto.durationWeeks }),
-        ...(dto.daySplitType !== undefined && { daySplitType: dto.daySplitType }),
-        ...(dto.description !== undefined && { description: dto.description }),
-        ...(dto.isPremium !== undefined && { isPremium: dto.isPremium }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
-        ...(dto.features !== undefined && { features: dto.features }),
-        ...(dto.tags !== undefined && { tags: dto.tags }),
-        ...(dto.thumbnailUrl !== undefined && { thumbnailUrl: dto.thumbnailUrl }),
+        ...(dto.daySplitType  !== undefined && { daySplitType:  dto.daySplitType }),
+        ...(dto.description   !== undefined && { description:   dto.description }),
+        ...(dto.isPremium     !== undefined && { isPremium:     dto.isPremium }),
+        ...(dto.isActive      !== undefined && { isActive:      dto.isActive }),
+        ...(dto.features      !== undefined && { features:      dto.features }),
+        ...(dto.tags          !== undefined && { tags:          dto.tags }),
+        ...(dto.thumbnailUrl  !== undefined && { thumbnailUrl:  dto.thumbnailUrl }),
+        // ── NEW FIELDS ──────────────────────────────────────
+        ...(dto.trainingDays  !== undefined && { trainingDays:  dto.trainingDays }),
+        ...(dto.restDays      !== undefined && { restDays:      dto.restDays }),
+        ...(dto.dayFocus      !== undefined && { dayFocus:      dto.dayFocus }),
+        ...(dto.accessories   !== undefined && { accessories:   dto.accessories }),
+        // ────────────────────────────────────────────────────
       },
     });
 
     await this.logAction(adminUserId, 'UPDATE_PROGRAM', 'Program', programId, dto);
     return updated;
   }
+
 
   // ═══════════════════════════════════════════════════════════
   // STEP 2 — Day Split
@@ -248,9 +261,6 @@ export class ProgramsService {
         });
       },
       {
-        // Generous timeout — 30 seconds handles even 10-week programs with ease.
-        // In practice the transaction now completes in ~200ms since all reads
-        // were moved outside. This is just a safety net.
         timeout: 30_000,
       },
     );
@@ -619,7 +629,7 @@ export class ProgramsService {
   // COPY
   // ═══════════════════════════════════════════════════════════
 
-  async copy(programId: string, dto: CopyProgramDto, adminUserId: string) {
+ async copy(programId: string, dto: CopyProgramDto, adminUserId: string) {
     const source = await this.prisma.program.findUnique({
       where: { id: programId },
       include: {
@@ -640,21 +650,26 @@ export class ProgramsService {
     const copy = await this.prisma.$transaction(async (tx) => {
       const newProgram = await tx.program.create({
         data: {
-          name: newName,
-          type: source.type,
-          difficulty: source.difficulty,
+          name:          newName,
+          type:          source.type,
+          difficulty:    source.difficulty,
           durationWeeks: source.durationWeeks,
-          daysPerWeek: source.daysPerWeek,
-          daySplitType: source.daySplitType,
-          description: source.description,
-          isPremium: source.isPremium,
-          isActive: true,
-          isPublished: false,
-          hasBFR: source.hasBFR,
+          daysPerWeek:   source.daysPerWeek,
+          daySplitType:  source.daySplitType,
+          description:   source.description,
+          isPremium:     source.isPremium,
+          isActive:      true,
+          isPublished:   false,
+          hasBFR:        source.hasBFR,
           hasAbsWorkout: source.hasAbsWorkout,
-          features: source.features,
-          tags: source.tags,
-          thumbnailUrl: source.thumbnailUrl,
+          features:      source.features,
+          tags:          source.tags,
+          thumbnailUrl:  source.thumbnailUrl,
+       
+          trainingDays:  source.trainingDays,
+          restDays:      source.restDays,
+          dayFocus:      source.dayFocus,
+          accessories:   source.accessories,
           createdByUserId: adminUserId,
         },
       });
@@ -662,19 +677,19 @@ export class ProgramsService {
       for (const week of source.weeks) {
         const newWeek = await tx.programWeek.create({
           data: {
-            programId: newProgram.id,
+            programId:  newProgram.id,
             weekNumber: week.weekNumber,
-            isPremium: week.isPremium,
-            notes: week.notes,
+            isPremium:  week.isPremium,
+            notes:      week.notes,
           },
         });
 
         for (const tm of week.trainingMethods) {
           await tx.programWeekTrainingMethod.create({
             data: {
-              programWeekId: newWeek.id,
+              programWeekId:   newWeek.id,
               trainingMethodId: tm.trainingMethodId,
-              dayType: tm.dayType,
+              dayType:         tm.dayType,
             },
           });
         }
@@ -683,34 +698,34 @@ export class ProgramsService {
           const newDay = await tx.programDay.create({
             data: {
               programWeekId: newWeek.id,
-              dayNumber: day.dayNumber,
-              dayType: day.dayType,
-              name: day.name,
-              notes: day.notes,
+              dayNumber:     day.dayNumber,
+              dayType:       day.dayType,
+              name:          day.name,
+              notes:         day.notes,
             },
           });
 
           for (const ex of day.exercises) {
             await tx.programDayExercise.create({
               data: {
-                programDayId: newDay.id,
-                exerciseId: ex.exerciseId,
-                sortOrder: ex.sortOrder,
-                reps: ex.reps,
-                restSeconds: ex.restSeconds,
-                setType: ex.setType,
-                isOptional: ex.isOptional,
+                programDayId:  newDay.id,
+                exerciseId:    ex.exerciseId,
+                sortOrder:     ex.sortOrder,
+                reps:          ex.reps,
+                restSeconds:   ex.restSeconds,
+                setType:       ex.setType,
+                isOptional:    ex.isOptional,
                 accessoryNote: ex.accessoryNote,
-                isBFR: ex.isBFR,
-                isAbs: ex.isAbs,
-                isAccessory: ex.isAccessory,
-                notes: ex.notes,
+                isBFR:         ex.isBFR,
+                isAbs:         ex.isAbs,
+                isAccessory:   ex.isAccessory,
+                notes:         ex.notes,
                 sets: {
                   create: ex.sets.map((s) => ({
-                    setNumber: s.setNumber,
-                    reps: s.reps,
+                    setNumber:   s.setNumber,
+                    reps:        s.reps,
                     restSeconds: s.restSeconds,
-                    notes: s.notes,
+                    notes:       s.notes,
                   })),
                 },
               },
@@ -723,7 +738,7 @@ export class ProgramsService {
     });
 
     await this.logAction(adminUserId, 'COPY_PROGRAM', 'Program', copy.id, {
-      sourceId: programId,
+      sourceId:   programId,
       sourceName: source.name,
     });
 

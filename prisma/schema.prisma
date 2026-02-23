@@ -54,6 +54,9 @@ enum ProgramType {
   AUTO // AI-generated based on preferences
   FREESTYLE // On-the-fly / decide today
   ON_THE_FLY // On-the-fly auto program
+  ACTIVE
+  DRAFT
+  AA
 }
 
 enum DaySplitType {
@@ -347,24 +350,23 @@ model Subscription {
 // ══════════════════════════════════════════════════════════════
 
 model CoachProfile {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  bio               String?
-  specialties       String[] @default([])
-  certifications    String[] @default([])
-  profilePhoto      String?
-  phoneNumber       String?
-  isVerified        Boolean  @default(false)
-  isActive          Boolean  @default(true)
-  rating            Float    @default(0)
-  totalReviews      Int      @default(0)
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  bio            String?
+  specialties    String[] @default([])
+  certifications String[] @default([])
+  profilePhoto   String?
+  phoneNumber    String?
+  isVerified     Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  rating         Float    @default(0)
+  totalReviews   Int      @default(0)
   // Stats
-  totalClients      Int      @default(0)
+  totalClients   Int      @default(0)
 
-  totalSessionsHeld Int      @default(0)
-  gymName         String?           
-  gymLocation     String?
-
+  totalSessionsHeld Int     @default(0)
+  gymName           String?
+  gymLocation       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -386,12 +388,12 @@ model CoachProfile {
 // ══════════════════════════════════════════════════════════════
 
 model ClientProfile {
-  id      String       @id @default(cuid())
-  userId  String       @unique
-  coachId String
-  status  ClientStatus @default(PENDING_PAR_Q)
-  gymName         String?            
-  gymLocation     String?
+  id          String       @id @default(cuid())
+  userId      String       @unique
+  coachId     String
+  status      ClientStatus @default(PENDING_PAR_Q)
+  gymName     String?
+  gymLocation String?
 
   // Joined via invitation
   invitationId String?
@@ -577,6 +579,11 @@ model Program {
   hasBFR        Boolean @default(false)
   hasAbsWorkout Boolean @default(false)
   hasActivation Boolean @default(false)
+
+  trainingDays String[] @default([]) 
+  restDays     String[] @default([]) 
+  dayFocus     String[] @default([]) 
+  accessories  String[] @default([])
 
   // Creator (null = Admin/builtin)
   createdByUserId String?

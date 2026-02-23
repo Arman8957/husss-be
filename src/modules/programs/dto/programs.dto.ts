@@ -93,6 +93,42 @@ export class CreateProgramDto {
   @IsOptional()
   @IsString()
   thumbnailUrl?: string;
+
+  @ApiPropertyOptional({
+    example: ['1', '3', '5'],
+    description: 'Which days of the week are training days (e.g. "1,3,5" = Mon/Wed/Fri). Free-form strings — use whatever convention the UI sends.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  trainingDays?: string[];
+
+  @ApiPropertyOptional({
+    example: ['2', '4', '6', '7'],
+    description: 'Which days are rest days. Complement of trainingDays.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  restDays?: string[];
+
+  @ApiPropertyOptional({
+    example: ['Push', 'Pull', 'Legs'],
+    description: 'Day focus labels shown in the Day Split UI (e.g. "Push", "Pull", "Legs"). One entry per training day.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  dayFocus?: string[];
+
+  @ApiPropertyOptional({
+    example: ['Low to high rope pull', 'Cable fly', 'Face pull'],
+    description: 'Accessory exercise names or notes shown under the day split card.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  accessories?: string[];
 }
 
 export class UpdateProgramDto extends PartialType(CreateProgramDto) {}
