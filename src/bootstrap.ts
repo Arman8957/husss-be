@@ -76,6 +76,7 @@ export async function bootstrap() {
     // .addServer('https://api.zenith.com/api/v1', 'Production Server')
     .addTag('tasks', 'Operations related to user tasks') // Optional: Organize endpoints with tags
     .addTag('auth', 'User authentication and sessions')
+    .addBearerAuth()
     // Add Bearer token authentication if your API uses JWT
     // .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'access-token')
     .build();

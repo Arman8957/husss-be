@@ -8,12 +8,14 @@ import { FirebaseModule } from './common/firebase/firebase.module';
 import { EmailModule } from './common/email/email.module';
 import { AuthModule } from './modules/auth/auth.module';
 
-import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { ValidationPipe } from './common/pipes/validation.pipe';
 import configuration from './config/configuration';
 import { AuditModule } from './common/audit/audit.module';
 import { ProgramsModule } from './modules/programs/programs.module';
+import { BrfModule } from './modules/content-management/brf/brf.module';
+import { ExecutionNoteModule } from './modules/content-management/execution-note/execution-note.module';
+import { ResearchAndEducationModule } from './modules/content-management/research-and-educaion/research-and-educaion.module';
 
 @Module({
   imports: [
@@ -38,6 +40,9 @@ import { ProgramsModule } from './modules/programs/programs.module';
     AuthModule,
     AuditModule,
     ProgramsModule,
+    BrfModule,
+    ExecutionNoteModule,
+    ResearchAndEducationModule,
   ],
   providers: [
 
@@ -63,4 +68,4 @@ import { ProgramsModule } from './modules/programs/programs.module';
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }
