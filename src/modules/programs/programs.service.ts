@@ -1,23 +1,38 @@
-// src/programs/programs.service.ts
-
 import {
-  Injectable, NotFoundException, BadRequestException,
-  ForbiddenException, ConflictException,
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
-
 import {
-  CreateProgramDto, UpdateProgramDto,
-  AddExerciseToDayDto, UpdateExerciseInDayDto, ReorderExercisesDto,
-  PublishProgramDto, ActivateProgramDto, ProgramQueryDto, CopyProgramDto,
+  CreateProgramDto,
+  UpdateProgramDto,
+  AddExerciseToDayDto,
+  UpdateExerciseInDayDto,
+  ReorderExercisesDto,
+  PublishProgramDto,
+  ActivateProgramDto,
+  ProgramQueryDto,
+  CopyProgramDto,
+  SaveDaySplitDto,
 } from './dto/programs.dto';
 import {
-  ProgramType, ExerciseTabType, MuscleGroup, ExerciseCategory,
-  EquipmentType, MediaType, Prisma,
+  ProgramType,
+  ExerciseTabType,
+  MuscleGroup,
+  ExerciseCategory,
+  EquipmentType,
+  MediaType,
+  WorkoutDayType,
+  Prisma,
 } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { SaveDaySplitDto } from './dto/programs.dto';
-import { IProgramLibraryItem, IProgramReviewShape, IProgramWithWeeks } from './interface/program.interface';
-
+import {
+  IProgramLibraryItem,
+  IProgramReviewShape,
+  IProgramWithWeeks,
+} from './interface/program.interface';
 
 @Injectable()
 export class ProgramsService {
@@ -27,28 +42,29 @@ export class ProgramsService {
   // STEP 1 — Basic Info
   // ═══════════════════════════════════════════════════════════
 
- async create(dto: CreateProgramDto, adminUserId: string) {
+  async create(dto: CreateProgramDto, adminUserId: string) {
     const program = await this.prisma.program.create({
       data: {
-        name:          dto.name,
-        type:          dto.type          ?? ProgramType.BUILTIN,
-        difficulty:    dto.difficulty    ?? 'INTERMEDIATE',
+        name: dto.name,
+        type: dto.type ?? ProgramType.BUILTIN,
+        difficulty: dto.difficulty ?? 'INTERMEDIATE',
         durationWeeks: dto.durationWeeks,
-        daysPerWeek:   0,
-        daySplitType:  dto.daySplitType  ?? 'PUSH_PULL_LEGS',
-        description:   dto.description   ?? null,
-        isPremium:     dto.isPremium     ?? false,
-        isActive:      dto.isActive      ?? true,
-        isPublished:   false,
-        features:      dto.features      ?? [],
-        tags:          dto.tags          ?? [],
-        thumbnailUrl:  dto.thumbnailUrl  ?? null,
-        // ── NEW FIELDS ──────────────────────────────────────
-        trainingDays:  dto.trainingDays  ?? [],   // e.g. ["1","3","5"]
-        restDays:      dto.restDays      ?? [],   // e.g. ["2","4","6","7"]
-        dayFocus:      dto.dayFocus      ?? [],   // e.g. ["Push","Pull","Legs"]
-        accessories:   dto.accessories   ?? [],   // e.g. ["Low to high rope pull"]
-        // ────────────────────────────────────────────────────
+        daysPerWeek: 0,
+        daySplitType: dto.daySplitType ?? 'PUSH_PULL_LEGS',
+        description: dto.description ?? null,
+        isPremium: dto.isPremium ?? false,
+        isActive: dto.isActive ?? true,
+        isPublished: false,
+        features: dto.features ?? [],
+        tags: dto.tags ?? [],
+        thumbnailUrl: dto.thumbnailUrl ?? null,
+        // ── Schedule metadata ──────────────────────────────
+        trainingDays: dto.trainingDays ?? [],
+        restDays: dto.restDays ?? [],
+       
+        dayFocus: this.extractDayFocusLabels(dto.dayFocus),
+        accessories: dto.accessories ?? [],
+        // ──────────────────────────────────────────────────
         createdByUserId: adminUserId,
       },
     });
@@ -67,38 +83,57 @@ export class ProgramsService {
     const updated = await this.prisma.program.update({
       where: { id: programId },
       data: {
-        ...(dto.name          !== undefined && { name:          dto.name }),
-        ...(dto.type          !== undefined && { type:          dto.type }),
-        ...(dto.difficulty    !== undefined && { difficulty:    dto.difficulty }),
-        ...(dto.durationWeeks !== undefined && { durationWeeks: dto.durationWeeks }),
-        ...(dto.daySplitType  !== undefined && { daySplitType:  dto.daySplitType }),
-        ...(dto.description   !== undefined && { description:   dto.description }),
-        ...(dto.isPremium     !== undefined && { isPremium:     dto.isPremium }),
-        ...(dto.isActive      !== undefined && { isActive:      dto.isActive }),
-        ...(dto.features      !== undefined && { features:      dto.features }),
-        ...(dto.tags          !== undefined && { tags:          dto.tags }),
-        ...(dto.thumbnailUrl  !== undefined && { thumbnailUrl:  dto.thumbnailUrl }),
-        // ── NEW FIELDS ──────────────────────────────────────
-        ...(dto.trainingDays  !== undefined && { trainingDays:  dto.trainingDays }),
-        ...(dto.restDays      !== undefined && { restDays:      dto.restDays }),
-        ...(dto.dayFocus      !== undefined && { dayFocus:      dto.dayFocus }),
-        ...(dto.accessories   !== undefined && { accessories:   dto.accessories }),
-        // ────────────────────────────────────────────────────
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.type !== undefined && { type: dto.type }),
+        ...(dto.difficulty !== undefined && { difficulty: dto.difficulty }),
+        ...(dto.durationWeeks !== undefined && {
+          durationWeeks: dto.durationWeeks,
+        }),
+        ...(dto.daySplitType !== undefined && {
+          daySplitType: dto.daySplitType,
+        }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.isPremium !== undefined && { isPremium: dto.isPremium }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        ...(dto.features !== undefined && { features: dto.features }),
+        ...(dto.tags !== undefined && { tags: dto.tags }),
+        ...(dto.thumbnailUrl !== undefined && {
+          thumbnailUrl: dto.thumbnailUrl,
+        }),
+        // ── Schedule metadata ──────────────────────────────
+        ...(dto.trainingDays !== undefined && {
+          trainingDays: dto.trainingDays,
+        }),
+        ...(dto.restDays !== undefined && { restDays: dto.restDays }),
+        // Store only labels; muscleGroups live on ProgramDay
+        ...(dto.dayFocus !== undefined && {
+          dayFocus: this.extractDayFocusLabels(dto.dayFocus),
+        }),
+        ...(dto.accessories !== undefined && { accessories: dto.accessories }),
+        // ──────────────────────────────────────────────────
       },
     });
 
-    await this.logAction(adminUserId, 'UPDATE_PROGRAM', 'Program', programId, dto);
+    await this.logAction(
+      adminUserId,
+      'UPDATE_PROGRAM',
+      'Program',
+      programId,
+      dto,
+    );
     return updated;
   }
-
 
   // ═══════════════════════════════════════════════════════════
   // STEP 2 — Day Split
   // ═══════════════════════════════════════════════════════════
 
- async saveDaySplit(programId: string, dto: SaveDaySplitDto, adminUserId: string) {
-
-    // ── Pre-flight validation (all outside transaction) ──────────────────────
+  async saveDaySplit(
+    programId: string,
+    dto: SaveDaySplitDto,
+    adminUserId: string,
+  ) {
+    // ── Pre-flight validation (all reads OUTSIDE transaction) ────────────────
     const program = await this.findProgramOrThrow(programId);
 
     if (program.isPublished) {
@@ -121,40 +156,38 @@ export class ProgramsService {
       throw new BadRequestException('Duplicate week numbers in request');
     }
 
-    // ── READ 1: Load all training methods in ONE query ────────────────────────
-    // Collect every unique trainingMethod type string from the entire request
+    // ── READ 1: All training methods in ONE query ─────────────────────────────
     const requestedMethodTypes = [
       ...new Set(dto.weeks.flatMap((w) => w.days.map((d) => d.trainingMethod))),
     ];
 
-    // One DB call to get all of them at once — no loop, no per-item queries
     const foundMethods = await this.prisma.trainingMethod.findMany({
       where: { type: { in: requestedMethodTypes as any }, isActive: true },
       select: { id: true, type: true, name: true },
     });
 
-    // Build a lookup map: type string → { id, name }
     const methodMap = new Map(foundMethods.map((m) => [m.type, m]));
 
-    // Validate ALL methods upfront — fail fast before touching anything in DB
+    // Validate all methods upfront — fail fast before any writes
     for (const type of requestedMethodTypes) {
       if (!methodMap.has(type)) {
         throw new BadRequestException(
-          `Training method "${type}" not found or inactive. Run the seed script first: npx ts-node prisma/seeds/training-methods.seed.ts`,
+          `Training method "${type}" not found or inactive. ` +
+            `Run seed: npx ts-node prisma/seeds/training-methods.seed.ts`,
         );
       }
     }
 
-    // ── READ 2: Load existing weeks for this program ──────────────────────────
-    // So we can find their IDs for cleanup — one query, outside transaction
+    // ── READ 2: Existing weeks ────────────────────────────────────────────────
     const existingWeeks = await this.prisma.programWeek.findMany({
       where: { programId },
       select: { id: true, weekNumber: true },
     });
-    const existingWeekMap = new Map(existingWeeks.map((w) => [w.weekNumber, w.id]));
+    const existingWeekMap = new Map(
+      existingWeeks.map((w) => [w.weekNumber, w.id]),
+    );
 
-    // ── READ 3: Load existing days for each affected week ─────────────────────
-    // Needed to find day IDs for the cascade delete — one query per week max
+    // ── READ 3: Existing days for affected weeks ───────────────────────────────
     const affectedWeekIds = dto.weeks
       .map((w) => existingWeekMap.get(w.weekNumber))
       .filter(Boolean) as string[];
@@ -166,7 +199,6 @@ export class ProgramsService {
         })
       : [];
 
-    // Group days by weekId for quick lookup
     const daysByWeekId = new Map<string, string[]>();
     for (const day of existingDays) {
       const arr = daysByWeekId.get(day.programWeekId) ?? [];
@@ -174,7 +206,7 @@ export class ProgramsService {
       daysByWeekId.set(day.programWeekId, arr);
     }
 
-    // ── Compute flags before entering transaction ─────────────────────────────
+    // ── Compute program-level flags before transaction ────────────────────────
     let hasBFR = false;
     let hasAbsWorkout = false;
     for (const weekDto of dto.weeks) {
@@ -185,19 +217,16 @@ export class ProgramsService {
     }
     const daysPerWeek = dto.weeks[0]?.days.length ?? 0;
 
-    // ── WRITE: Transaction only contains fast writes — no reads inside ────────
-    // All data is pre-loaded above. Transaction now runs in ~200ms, well within
-    // the 5 second default timeout even for 10-week programs.
+    // ── WRITE: Transaction — only fast writes, zero reads inside ──────────────
     await this.prisma.$transaction(
       async (tx) => {
         for (const weekDto of dto.weeks) {
           const existingWeekId = existingWeekMap.get(weekDto.weekNumber);
 
-          // Upsert week row
+          // Upsert week
           let weekId: string;
           if (existingWeekId) {
             weekId = existingWeekId;
-            // Week already exists — nothing to update on the week row itself
           } else {
             const newWeek = await tx.programWeek.create({
               data: { programId, weekNumber: weekDto.weekNumber },
@@ -206,7 +235,7 @@ export class ProgramsService {
             weekId = newWeek.id;
           }
 
-          // Cascade delete: exercises → days → training method links
+          // Cascade delete existing days and their exercises
           const dayIds = daysByWeekId.get(weekId) ?? [];
           if (dayIds.length) {
             await tx.programDayExercise.deleteMany({
@@ -220,17 +249,25 @@ export class ProgramsService {
             where: { programWeekId: weekId },
           });
 
-          // Create all days for this week
+          // Create new days
           for (let i = 0; i < weekDto.days.length; i++) {
             const dayDto = weekDto.days[i];
-
-            // Training method ID already resolved — no DB lookup needed
             const tm = methodMap.get(dayDto.trainingMethod)!;
+
+            const muscleGroups: MuscleGroup[] =
+              dayDto.muscleGroups && dayDto.muscleGroups.length > 0
+                ? dayDto.muscleGroups
+                : this.inferMuscleGroups(dayDto.dayType, dayDto.name);
+            // ───────────────────────────────────────────────────────────────
 
             const noteParts = [
               dayDto.description,
-              dayDto.howToExecute ? `How to Execute: ${dayDto.howToExecute}` : null,
-              dayDto.exerciseHint ? `Exercise Hint: ${dayDto.exerciseHint}` : null,
+              dayDto.howToExecute
+                ? `How to Execute: ${dayDto.howToExecute}`
+                : null,
+              dayDto.exerciseHint
+                ? `Exercise Hint: ${dayDto.exerciseHint}`
+                : null,
             ].filter(Boolean);
 
             await tx.programDay.create({
@@ -239,6 +276,7 @@ export class ProgramsService {
                 dayNumber: i + 1,
                 dayType: dayDto.dayType,
                 name: dayDto.name,
+                muscleGroups, // ← saved here
                 notes: noteParts.length ? noteParts.join('\n') : null,
               },
             });
@@ -260,16 +298,13 @@ export class ProgramsService {
           data: { daysPerWeek, hasBFR, hasAbsWorkout },
         });
       },
-      {
-        timeout: 30_000,
-      },
+      { timeout: 30_000 },
     );
 
     await this.logAction(adminUserId, 'SAVE_DAY_SPLIT', 'Program', programId, {
       weeksConfigured: dto.weeks.length,
     });
 
-    // Return the full program with all weeks, days, and training methods
     return this.fetchFullProgram(programId);
   }
 
@@ -294,7 +329,7 @@ export class ProgramsService {
         );
       }
 
-      const { category, isBFR, isAbs } = this.resolveTabType(dto.tabType);
+      const { category } = this.resolveTabType(dto.tabType);
 
       const newExercise = await this.prisma.exercise.create({
         data: {
@@ -309,10 +344,20 @@ export class ProgramsService {
           media: {
             create: [
               dto.exerciseImageUrl
-                ? { type: MediaType.IMAGE, url: dto.exerciseImageUrl, label: 'Exercise Image', sortOrder: 0 }
+                ? {
+                    type: MediaType.IMAGE,
+                    url: dto.exerciseImageUrl,
+                    label: 'Exercise Image',
+                    sortOrder: 0,
+                  }
                 : null,
               dto.exerciseAnimationUrl
-                ? { type: MediaType.VIDEO, url: dto.exerciseAnimationUrl, label: 'Exercise Animation', sortOrder: 1 }
+                ? {
+                    type: MediaType.VIDEO,
+                    url: dto.exerciseAnimationUrl,
+                    label: 'Exercise Animation',
+                    sortOrder: 1,
+                  }
                 : null,
             ].filter(Boolean) as any,
           },
@@ -320,9 +365,13 @@ export class ProgramsService {
       });
       exerciseId = newExercise.id;
     } else {
-      const ex = await this.prisma.exercise.findUnique({ where: { id: exerciseId } });
+      const ex = await this.prisma.exercise.findUnique({
+        where: { id: exerciseId },
+      });
       if (!ex || !ex.isActive) {
-        throw new NotFoundException(`Exercise "${exerciseId}" not found in library`);
+        throw new NotFoundException(
+          `Exercise "${exerciseId}" not found in library`,
+        );
       }
     }
 
@@ -359,12 +408,18 @@ export class ProgramsService {
       });
     });
 
-    await this.logAction(adminUserId, 'ADD_EXERCISE_TO_DAY', 'ProgramDayExercise', pde.id, {
-      programId,
-      dayId,
-      tabType: dto.tabType,
-      exerciseName: pde.exercise.name,
-    });
+    await this.logAction(
+      adminUserId,
+      'ADD_EXERCISE_TO_DAY',
+      'ProgramDayExercise',
+      pde.id,
+      {
+        programId,
+        dayId,
+        tabType: dto.tabType,
+        exerciseName: pde.exercise.name,
+      },
+    );
 
     return pde;
   }
@@ -382,7 +437,9 @@ export class ProgramsService {
       where: { id: pdeId, programDayId: dayId },
     });
     if (!pde) {
-      throw new NotFoundException(`Exercise assignment ${pdeId} not found in day ${dayId}`);
+      throw new NotFoundException(
+        `Exercise assignment ${pdeId} not found in day ${dayId}`,
+      );
     }
 
     const { isBFR, isAbs } = dto.tabType
@@ -391,7 +448,9 @@ export class ProgramsService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (dto.sets?.length) {
-        await tx.programDayExerciseSet.deleteMany({ where: { programDayExerciseId: pdeId } });
+        await tx.programDayExerciseSet.deleteMany({
+          where: { programDayExerciseId: pdeId },
+        });
         await tx.programDayExerciseSet.createMany({
           data: dto.sets.map((s) => ({
             programDayExerciseId: pdeId,
@@ -409,7 +468,9 @@ export class ProgramsService {
           ...(dto.exerciseId && { exerciseId: dto.exerciseId }),
           ...(dto.setType && { setType: dto.setType }),
           ...(dto.isOptional !== undefined && { isOptional: dto.isOptional }),
-          ...(dto.accessoryNote !== undefined && { accessoryNote: dto.accessoryNote }),
+          ...(dto.accessoryNote !== undefined && {
+            accessoryNote: dto.accessoryNote,
+          }),
           ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
           ...(dto.sets?.length && {
             reps: dto.sets[0].reps,
@@ -425,7 +486,13 @@ export class ProgramsService {
       });
     });
 
-    await this.logAction(adminUserId, 'UPDATE_EXERCISE_IN_DAY', 'ProgramDayExercise', pdeId, dto);
+    await this.logAction(
+      adminUserId,
+      'UPDATE_EXERCISE_IN_DAY',
+      'ProgramDayExercise',
+      pdeId,
+      dto,
+    );
     return updated;
   }
 
@@ -440,12 +507,20 @@ export class ProgramsService {
     const pde = await this.prisma.programDayExercise.findFirst({
       where: { id: pdeId, programDayId: dayId },
     });
-    if (!pde) throw new NotFoundException(`Exercise assignment ${pdeId} not found`);
+    if (!pde)
+      throw new NotFoundException(`Exercise assignment ${pdeId} not found`);
 
     await this.prisma.programDayExercise.delete({ where: { id: pdeId } });
-    await this.logAction(adminUserId, 'REMOVE_EXERCISE_FROM_DAY', 'ProgramDayExercise', pdeId, {
-      programId, dayId,
-    });
+    await this.logAction(
+      adminUserId,
+      'REMOVE_EXERCISE_FROM_DAY',
+      'ProgramDayExercise',
+      pdeId,
+      {
+        programId,
+        dayId,
+      },
+    );
 
     return { success: true, message: 'Exercise removed from day' };
   }
@@ -483,7 +558,7 @@ export class ProgramsService {
   }
 
   async getDayExercises(programId: string, dayId: string) {
-    await this.findDayOrThrow(programId, dayId);
+    const day = await this.findDayOrThrow(programId, dayId);
 
     const [mainExercises, bfrExercises, absExercises] = await Promise.all([
       this.prisma.programDayExercise.findMany({
@@ -512,7 +587,15 @@ export class ProgramsService {
       }),
     ]);
 
-    return { mainExercises, bfrExercises, absExercises };
+    return {
+      dayId: day.id,
+      dayName: day.name,
+      dayType: day.dayType,
+      muscleGroups: day.muscleGroups, // ← returned so UI can pre-check the checkboxes
+      mainExercises,
+      bfrExercises,
+      absExercises,
+    };
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -533,7 +616,9 @@ export class ProgramsService {
                 exercises: {
                   orderBy: { sortOrder: 'asc' },
                   include: {
-                    exercise: { include: { media: { orderBy: { sortOrder: 'asc' } } } },
+                    exercise: {
+                      include: { media: { orderBy: { sortOrder: 'asc' } } },
+                    },
                     sets: { orderBy: { setNumber: 'asc' } },
                   },
                 },
@@ -545,15 +630,34 @@ export class ProgramsService {
     });
     if (!program) throw new NotFoundException(`Program ${programId} not found`);
 
+    // ── Build dayFocusItems: enrich raw string[] into { label, muscleGroups }[]
+    // dayFocus is stored as string[] on the Program row (e.g. ["Push","Pull","Legs"]).
+    // We hydrate it into the structured IDayFocusItem[] the UI needs by pulling
+    // muscleGroups from Week 1 days (all weeks share the same day structure).
+    const week1Days = program.weeks.find((w) => w.weekNumber === 1)?.days ?? [];
+    const dayFocusItems = (program.dayFocus as string[]).map((label, idx) => ({
+      label,
+      muscleGroups: week1Days[idx]?.muscleGroups?.length
+        ? week1Days[idx].muscleGroups
+        : this.inferMuscleGroupsFromLabel(label),
+    }));
+
     return {
       id: program.id,
       name: program.name,
       description: program.description,
       duration: `${program.durationWeeks} Weeks`,
+      // Schedule metadata — all required by IProgramReviewShape
+      trainingDays: program.trainingDays,
+      restDays: program.restDays,
+      accessories: program.accessories,
+      dayFocusItems, // ← structured IDayFocusItem[] (NOT raw dayFocus string[])
       weeks: program.weeks.map((week) => ({
         weekNumber: week.weekNumber,
         days: week.days.map((day) => {
-          const tm = week.trainingMethods.find((m) => m.dayType === day.dayType);
+          const tm = week.trainingMethods.find(
+            (m) => m.dayType === day.dayType,
+          );
           const mainEx = day.exercises.filter((e) => !e.isBFR && !e.isAbs);
           const bfrEx = day.exercises.filter((e) => e.isBFR);
           const absEx = day.exercises.filter((e) => e.isAbs);
@@ -562,6 +666,7 @@ export class ProgramsService {
             dayNumber: day.dayNumber,
             name: day.name,
             dayType: day.dayType,
+            muscleGroups: day.muscleGroups, // ← included in review
             method: tm?.trainingMethod?.name ?? null,
             notes: day.notes,
             mainExercises: mainEx.map((e) => ({
@@ -585,15 +690,16 @@ export class ProgramsService {
     };
   }
 
-  async publish(programId: string, dto: PublishProgramDto, adminUserId: string) {
+  async publish(
+    programId: string,
+    dto: PublishProgramDto,
+    adminUserId: string,
+  ) {
     await this.findProgramOrThrow(programId);
 
     if (dto.publish) {
       const hasExercises = await this.prisma.programWeek.findFirst({
-        where: {
-          programId,
-          days: { some: { exercises: { some: {} } } },
-        },
+        where: { programId, days: { some: { exercises: { some: {} } } } },
       });
       if (!hasExercises) {
         throw new BadRequestException(
@@ -607,7 +713,6 @@ export class ProgramsService {
       data: { isPublished: dto.publish },
     });
 
-    // Ensure analytics row exists
     await this.prisma.programAnalytics.upsert({
       where: { programId },
       create: { programId },
@@ -629,16 +734,14 @@ export class ProgramsService {
   // COPY
   // ═══════════════════════════════════════════════════════════
 
- async copy(programId: string, dto: CopyProgramDto, adminUserId: string) {
+  async copy(programId: string, dto: CopyProgramDto, adminUserId: string) {
     const source = await this.prisma.program.findUnique({
       where: { id: programId },
       include: {
         weeks: {
           include: {
             trainingMethods: true,
-            days: {
-              include: { exercises: { include: { sets: true } } },
-            },
+            days: { include: { exercises: { include: { sets: true } } } },
           },
         },
       },
@@ -650,26 +753,27 @@ export class ProgramsService {
     const copy = await this.prisma.$transaction(async (tx) => {
       const newProgram = await tx.program.create({
         data: {
-          name:          newName,
-          type:          source.type,
-          difficulty:    source.difficulty,
+          name: newName,
+          type: source.type,
+          difficulty: source.difficulty,
           durationWeeks: source.durationWeeks,
-          daysPerWeek:   source.daysPerWeek,
-          daySplitType:  source.daySplitType,
-          description:   source.description,
-          isPremium:     source.isPremium,
-          isActive:      true,
-          isPublished:   false,
-          hasBFR:        source.hasBFR,
+          daysPerWeek: source.daysPerWeek,
+          daySplitType: source.daySplitType,
+          description: source.description,
+          isPremium: source.isPremium,
+          isActive: true,
+          isPublished: false,
+          hasBFR: source.hasBFR,
           hasAbsWorkout: source.hasAbsWorkout,
-          features:      source.features,
-          tags:          source.tags,
-          thumbnailUrl:  source.thumbnailUrl,
-       
-          trainingDays:  source.trainingDays,
-          restDays:      source.restDays,
-          dayFocus:      source.dayFocus,
-          accessories:   source.accessories,
+          features: source.features,
+          tags: source.tags,
+          thumbnailUrl: source.thumbnailUrl,
+          // ── Copy schedule metadata ─────────────────────────
+          trainingDays: source.trainingDays,
+          restDays: source.restDays,
+          dayFocus: source.dayFocus, // already string[] in DB
+          accessories: source.accessories,
+          // ──────────────────────────────────────────────────
           createdByUserId: adminUserId,
         },
       });
@@ -677,19 +781,19 @@ export class ProgramsService {
       for (const week of source.weeks) {
         const newWeek = await tx.programWeek.create({
           data: {
-            programId:  newProgram.id,
+            programId: newProgram.id,
             weekNumber: week.weekNumber,
-            isPremium:  week.isPremium,
-            notes:      week.notes,
+            isPremium: week.isPremium,
+            notes: week.notes,
           },
         });
 
         for (const tm of week.trainingMethods) {
           await tx.programWeekTrainingMethod.create({
             data: {
-              programWeekId:   newWeek.id,
+              programWeekId: newWeek.id,
               trainingMethodId: tm.trainingMethodId,
-              dayType:         tm.dayType,
+              dayType: tm.dayType,
             },
           });
         }
@@ -698,34 +802,35 @@ export class ProgramsService {
           const newDay = await tx.programDay.create({
             data: {
               programWeekId: newWeek.id,
-              dayNumber:     day.dayNumber,
-              dayType:       day.dayType,
-              name:          day.name,
-              notes:         day.notes,
+              dayNumber: day.dayNumber,
+              dayType: day.dayType,
+              name: day.name,
+              notes: day.notes,
+              muscleGroups: day.muscleGroups, // ← copied per day
             },
           });
 
           for (const ex of day.exercises) {
             await tx.programDayExercise.create({
               data: {
-                programDayId:  newDay.id,
-                exerciseId:    ex.exerciseId,
-                sortOrder:     ex.sortOrder,
-                reps:          ex.reps,
-                restSeconds:   ex.restSeconds,
-                setType:       ex.setType,
-                isOptional:    ex.isOptional,
+                programDayId: newDay.id,
+                exerciseId: ex.exerciseId,
+                sortOrder: ex.sortOrder,
+                reps: ex.reps,
+                restSeconds: ex.restSeconds,
+                setType: ex.setType,
+                isOptional: ex.isOptional,
                 accessoryNote: ex.accessoryNote,
-                isBFR:         ex.isBFR,
-                isAbs:         ex.isAbs,
-                isAccessory:   ex.isAccessory,
-                notes:         ex.notes,
+                isBFR: ex.isBFR,
+                isAbs: ex.isAbs,
+                isAccessory: ex.isAccessory,
+                notes: ex.notes,
                 sets: {
                   create: ex.sets.map((s) => ({
-                    setNumber:   s.setNumber,
-                    reps:        s.reps,
+                    setNumber: s.setNumber,
+                    reps: s.reps,
                     restSeconds: s.restSeconds,
-                    notes:       s.notes,
+                    notes: s.notes,
                   })),
                 },
               },
@@ -738,7 +843,7 @@ export class ProgramsService {
     });
 
     await this.logAction(adminUserId, 'COPY_PROGRAM', 'Program', copy.id, {
-      sourceId:   programId,
+      sourceId: programId,
       sourceName: source.name,
     });
 
@@ -751,12 +856,12 @@ export class ProgramsService {
 
   async findAll(query: ProgramQueryDto) {
     const where: Prisma.ProgramWhereInput = {};
-
     if (query.type) where.type = query.type;
     if (query.difficulty) where.difficulty = query.difficulty;
     if (query.isPremium !== undefined) where.isPremium = query.isPremium;
     if (query.isPublished !== undefined) where.isPublished = query.isPublished;
-    if (query.search) where.name = { contains: query.search, mode: 'insensitive' };
+    if (query.search)
+      where.name = { contains: query.search, mode: 'insensitive' };
 
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
@@ -792,10 +897,13 @@ export class ProgramsService {
   async remove(programId: string, adminUserId: string) {
     const program = await this.findProgramOrThrow(programId);
 
-    const activeCount = await this.prisma.userActiveProgram.count({ where: { programId } });
+    const activeCount = await this.prisma.userActiveProgram.count({
+      where: { programId },
+    });
     if (activeCount > 0) {
       throw new ConflictException(
-        `Cannot delete: ${activeCount} user(s) currently have this program active. Archive (isActive=false) instead.`,
+        `Cannot delete: ${activeCount} user(s) currently have this program active. ` +
+          `Archive (isActive=false) instead.`,
       );
     }
 
@@ -814,7 +922,10 @@ export class ProgramsService {
   async getLibrary(userId: string): Promise<IProgramLibraryItem[]> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { isPremium: true, activeProgram: { select: { programId: true } } },
+      select: {
+        isPremium: true,
+        activeProgram: { select: { programId: true } },
+      },
     });
     if (!user) throw new NotFoundException('User not found');
 
@@ -844,9 +955,8 @@ export class ProgramsService {
     const program = await this.prisma.program.findFirst({
       where: { id: dto.programId, isPublished: true, isActive: true },
     });
-    if (!program) {
+    if (!program)
       throw new NotFoundException('Program not found or not available');
-    }
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -860,7 +970,7 @@ export class ProgramsService {
       );
     }
 
-    const active = await this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
       const result = await tx.userActiveProgram.upsert({
         where: { userId },
         create: {
@@ -892,7 +1002,11 @@ export class ProgramsService {
 
       await tx.programAnalytics.upsert({
         where: { programId: dto.programId },
-        create: { programId: dto.programId, totalEnrollments: 1, activeEnrollments: 1 },
+        create: {
+          programId: dto.programId,
+          totalEnrollments: 1,
+          activeEnrollments: 1,
+        },
         update: {
           totalEnrollments: { increment: 1 },
           activeEnrollments: { increment: 1 },
@@ -909,12 +1023,10 @@ export class ProgramsService {
 
       return result;
     });
-
-    return active;
   }
 
   async getUserActiveProgram(userId: string) {
-    const active = await this.prisma.userActiveProgram.findUnique({
+    return this.prisma.userActiveProgram.findUnique({
       where: { userId },
       include: {
         program: {
@@ -929,7 +1041,9 @@ export class ProgramsService {
                     exercises: {
                       orderBy: { sortOrder: 'asc' },
                       include: {
-                        exercise: { include: { media: { orderBy: { sortOrder: 'asc' } } } },
+                        exercise: {
+                          include: { media: { orderBy: { sortOrder: 'asc' } } },
+                        },
                         sets: { orderBy: { setNumber: 'asc' } },
                       },
                     },
@@ -941,12 +1055,12 @@ export class ProgramsService {
         },
       },
     });
-    if (!active) return null;
-    return active;
   }
 
   async deactivateProgram(userId: string) {
-    const active = await this.prisma.userActiveProgram.findUnique({ where: { userId } });
+    const active = await this.prisma.userActiveProgram.findUnique({
+      where: { userId },
+    });
     if (!active) throw new NotFoundException('No active program found');
 
     await this.prisma.$transaction(async (tx) => {
@@ -964,8 +1078,181 @@ export class ProgramsService {
   // PRIVATE HELPERS
   // ═══════════════════════════════════════════════════════════
 
+  /**
+   * Auto-infer muscle group subcategories from dayType + day name.
+   * Used when admin doesn't explicitly tick the checkboxes.
+   *
+   * Mapping matches real program data from the Excel sheets:
+   *   "Push" / "Push A" / "Push B"  → Chest, Shoulders, Triceps
+   *   "Pull" / "Pull A" / "Pull B"  → Back, Biceps, Traps
+   *   "Legs"                         → Quads, Hamstrings, Calves, Glutes
+   *   "Legs + Triceps"               → Quads, Hamstrings, Calves, Glutes, Triceps
+   *   "Workout A/B" (2-2-2 program)  → all muscle groups (full body)
+   *   UPPER                          → Chest, Back, Shoulders, Biceps, Triceps
+   *   LOWER                          → Quads, Hamstrings, Calves, Glutes
+   *   FULL_BODY                      → all muscle groups
+   *   REST                           → [] (no muscles)
+   */
+  private inferMuscleGroups(
+    dayType: WorkoutDayType,
+    dayName?: string | null,
+  ): MuscleGroup[] {
+    // Check day name for special combos (takes priority over dayType enum)
+    const nameLower = (dayName ?? '').toLowerCase();
+
+    if (nameLower.includes('legs') && nameLower.includes('tricep')) {
+      // "Legs + Triceps" — real split from Program 3
+      return [
+        MuscleGroup.QUADS,
+        MuscleGroup.HAMSTRINGS,
+        MuscleGroup.CALVES,
+        MuscleGroup.GLUTES,
+        MuscleGroup.TRICEPS,
+      ];
+    }
+
+    if (nameLower.includes('workout')) {
+      // "Workout A/B" from Program 4 (2-2-2) = full body per session
+      return [
+        MuscleGroup.BACK,
+        MuscleGroup.CHEST,
+        MuscleGroup.SHOULDERS,
+        MuscleGroup.TRAPS,
+        MuscleGroup.TRICEPS,
+        MuscleGroup.BICEPS,
+        MuscleGroup.QUADS,
+        MuscleGroup.HAMSTRINGS,
+        MuscleGroup.ABS,
+      ];
+    }
+
+    // Fall back to dayType enum
+    switch (dayType) {
+      case WorkoutDayType.PUSH:
+        return [MuscleGroup.CHEST, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS];
+
+      case WorkoutDayType.PULL:
+        return [MuscleGroup.BACK, MuscleGroup.BICEPS, MuscleGroup.TRAPS];
+
+      case WorkoutDayType.LEGS:
+        return [
+          MuscleGroup.QUADS,
+          MuscleGroup.HAMSTRINGS,
+          MuscleGroup.CALVES,
+          MuscleGroup.GLUTES,
+        ];
+
+      case WorkoutDayType.UPPER:
+        return [
+          MuscleGroup.CHEST,
+          MuscleGroup.BACK,
+          MuscleGroup.SHOULDERS,
+          MuscleGroup.BICEPS,
+          MuscleGroup.TRICEPS,
+        ];
+
+      case WorkoutDayType.LOWER:
+        return [
+          MuscleGroup.QUADS,
+          MuscleGroup.HAMSTRINGS,
+          MuscleGroup.CALVES,
+          MuscleGroup.GLUTES,
+        ];
+
+      case WorkoutDayType.FULL_BODY:
+        return [
+          MuscleGroup.CHEST,
+          MuscleGroup.BACK,
+          MuscleGroup.SHOULDERS,
+          MuscleGroup.BICEPS,
+          MuscleGroup.TRICEPS,
+          MuscleGroup.TRAPS,
+          MuscleGroup.QUADS,
+          MuscleGroup.HAMSTRINGS,
+          MuscleGroup.CALVES,
+          MuscleGroup.GLUTES,
+          MuscleGroup.ABS,
+        ];
+
+      case WorkoutDayType.REST:
+        return [];
+
+      case WorkoutDayType.CUSTOM:
+      default:
+        // CUSTOM: no auto-inference — admin must supply muscleGroups explicitly
+        return [];
+    }
+  }
+
+
+  private extractDayFocusLabels(
+    dayFocus?: Array<{ label: string } | string>,
+  ): string[] {
+    if (!dayFocus?.length) return [];
+    return dayFocus.map((f) => (typeof f === 'string' ? f : f.label));
+  }
+
+  /**
+   * reconstructing dayFocusItems from the stored dayFocus string[]).
+   * Delegates to the same logic as inferMuscleGroups but takes a label string.
+   */
+  private inferMuscleGroupsFromLabel(label: string): MuscleGroup[] {
+    const l = label.toLowerCase();
+    if (l.includes('legs') && l.includes('tricep')) {
+      return [
+        MuscleGroup.QUADS,
+        MuscleGroup.HAMSTRINGS,
+        MuscleGroup.CALVES,
+        MuscleGroup.GLUTES,
+        MuscleGroup.TRICEPS,
+      ];
+    }
+    if (l.includes('push'))
+      return [MuscleGroup.CHEST, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS];
+    if (l.includes('pull'))
+      return [MuscleGroup.BACK, MuscleGroup.BICEPS, MuscleGroup.TRAPS];
+    if (l.includes('legs') || l.includes('leg'))
+      return [
+        MuscleGroup.QUADS,
+        MuscleGroup.HAMSTRINGS,
+        MuscleGroup.CALVES,
+        MuscleGroup.GLUTES,
+      ];
+    if (l.includes('upper'))
+      return [
+        MuscleGroup.CHEST,
+        MuscleGroup.BACK,
+        MuscleGroup.SHOULDERS,
+        MuscleGroup.BICEPS,
+        MuscleGroup.TRICEPS,
+      ];
+    if (l.includes('lower'))
+      return [
+        MuscleGroup.QUADS,
+        MuscleGroup.HAMSTRINGS,
+        MuscleGroup.CALVES,
+        MuscleGroup.GLUTES,
+      ];
+    if (l.includes('workout') || l.includes('full')) {
+      return [
+        MuscleGroup.BACK,
+        MuscleGroup.CHEST,
+        MuscleGroup.SHOULDERS,
+        MuscleGroup.TRAPS,
+        MuscleGroup.TRICEPS,
+        MuscleGroup.BICEPS,
+        MuscleGroup.QUADS,
+        MuscleGroup.HAMSTRINGS,
+        MuscleGroup.ABS,
+      ];
+    }
+    return [];
+  }
+
   private async findProgramOrThrow(programId: string) {
-    const p = await this.prisma.program.findUnique({ where: { id: programId } });
+    const p = await this.prisma.program.findUnique({
+      where: { id: programId },
+    });
     if (!p) throw new NotFoundException(`Program "${programId}" not found`);
     return p;
   }
@@ -975,12 +1262,17 @@ export class ProgramsService {
       where: { id: dayId, programWeek: { programId } },
     });
     if (!day) {
-      throw new NotFoundException(`Day "${dayId}" not found in program "${programId}"`);
+      throw new NotFoundException(
+        `Day "${dayId}" not found in program "${programId}"`,
+      );
     }
     return day;
   }
 
-  private async nextSortOrder(tx: Prisma.TransactionClient, dayId: string): Promise<number> {
+  private async nextSortOrder(
+    tx: Prisma.TransactionClient,
+    dayId: string,
+  ): Promise<number> {
     const last = await tx.programDayExercise.findFirst({
       where: { programDayId: dayId },
       orderBy: { sortOrder: 'desc' },
@@ -1000,17 +1292,31 @@ export class ProgramsService {
       case ExerciseTabType.ABS_EXERCISE:
         return { category: ExerciseCategory.ABS, isBFR: false, isAbs: true };
       default:
-        return { category: ExerciseCategory.COMPOUND, isBFR: false, isAbs: false };
+        return {
+          category: ExerciseCategory.COMPOUND,
+          isBFR: false,
+          isAbs: false,
+        };
     }
   }
 
   private muscleFromString(exerciseFor?: string): MuscleGroup {
     if (!exerciseFor) return MuscleGroup.FULL_BODY;
     const map: Record<string, MuscleGroup> = {
-      chest: 'CHEST', back: 'BACK', shoulder: 'SHOULDERS', bicep: 'BICEPS',
-      tricep: 'TRICEPS', leg: 'LEGS', quad: 'QUADS', hamstring: 'HAMSTRINGS',
-      calf: 'CALVES', calves: 'CALVES', glute: 'GLUTES', abs: 'ABS',
-      trap: 'TRAPS', forearm: 'FOREARMS',
+      chest: 'CHEST',
+      back: 'BACK',
+      shoulder: 'SHOULDERS',
+      bicep: 'BICEPS',
+      tricep: 'TRICEPS',
+      leg: 'LEGS',
+      quad: 'QUADS',
+      hamstring: 'HAMSTRINGS',
+      calf: 'CALVES',
+      calves: 'CALVES',
+      glute: 'GLUTES',
+      abs: 'ABS',
+      trap: 'TRAPS',
+      forearm: 'FOREARMS',
     };
     const lower = exerciseFor.toLowerCase();
     for (const [key, val] of Object.entries(map)) {
@@ -1019,7 +1325,9 @@ export class ProgramsService {
     return MuscleGroup.FULL_BODY;
   }
 
-  private async fetchFullProgram(programId: string): Promise<IProgramWithWeeks> {
+  private async fetchFullProgram(
+    programId: string,
+  ): Promise<IProgramWithWeeks> {
     const program = await this.prisma.program.findUnique({
       where: { id: programId },
       include: {
@@ -1034,7 +1342,9 @@ export class ProgramsService {
                 exercises: {
                   orderBy: { sortOrder: 'asc' },
                   include: {
-                    exercise: { include: { media: { orderBy: { sortOrder: 'asc' } } } },
+                    exercise: {
+                      include: { media: { orderBy: { sortOrder: 'asc' } } },
+                    },
                     sets: { orderBy: { setNumber: 'asc' } },
                   },
                 },
@@ -1044,7 +1354,8 @@ export class ProgramsService {
         },
       },
     });
-    if (!program) throw new NotFoundException(`Program "${programId}" not found`);
+    if (!program)
+      throw new NotFoundException(`Program "${programId}" not found`);
     return program as unknown as IProgramWithWeeks;
   }
 

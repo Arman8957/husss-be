@@ -580,9 +580,9 @@ model Program {
   hasAbsWorkout Boolean @default(false)
   hasActivation Boolean @default(false)
 
-  trainingDays String[] @default([]) 
-  restDays     String[] @default([]) 
-  dayFocus     String[] @default([]) 
+  trainingDays String[] @default([])
+  restDays     String[] @default([])
+  dayFocus     String[] @default([])
   accessories  String[] @default([])
 
   // Creator (null = Admin/builtin)
@@ -604,6 +604,11 @@ model Program {
   @@index([isPublished])
   @@map("programs")
 }
+
+
+
+
+
 
 // ══════════════════════════════════════════════════════════════
 // 12. PROGRAM WEEK
@@ -655,6 +660,7 @@ model ProgramDay {
   name          String? // "Push Day", "Chest, Shoulders & Triceps"
   isRestDay     Boolean        @default(false)
   notes         String?
+  muscleGroups  MuscleGroup[]  @default([])
 
   programWeek     ProgramWeek          @relation(fields: [programWeekId], references: [id], onDelete: Cascade)
   exercises       ProgramDayExercise[]
@@ -912,13 +918,17 @@ model Supplement {
   category      SupplementCategory
   description   String?
   dosage        String // "3-5g daily"
-  timing        String // "Any time"
-  notes         String? // "Isolate recommended for fat loss"
+  timing        String 
+  notes         String? 
   isRecommended Boolean            @default(false)
   sortOrder     Int                @default(0)
   isActive      Boolean            @default(true)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
+  vendorname    String?
+  productPrice  String?
+  productBenefit String?
+  productImage  String?
 
   affiliateProducts AffiliateProduct[]
   userTracking      UserSupplementTracking[]
@@ -1095,6 +1105,7 @@ model PartnerClinic {
   imageUrl      String?
   distanceMiles Float?
   openingHours  String? // "8:00 AM - 6:00 PM"
+  closeTime     String?
   isActive      Boolean  @default(true)
   sortOrder     Int      @default(0)
   latitude      Float?
