@@ -620,6 +620,9 @@ model ProgramWeek {
   weekNumber Int
   isPremium  Boolean @default(false) // premium-locked week
   notes      String?
+   trainingDays String[] @default([])   
+  restDays     String[] @default([])   
+  accessories  String[] @default([]) 
 
   program         Program                     @relation(fields: [programId], references: [id], onDelete: Cascade)
   days            ProgramDay[]
@@ -661,6 +664,7 @@ model ProgramDay {
   isRestDay     Boolean        @default(false)
   notes         String?
   muscleGroups  MuscleGroup[]  @default([])
+  
 
   programWeek     ProgramWeek          @relation(fields: [programWeekId], references: [id], onDelete: Cascade)
   exercises       ProgramDayExercise[]
@@ -917,8 +921,8 @@ model Supplement {
   name          String
   category      SupplementCategory
   description   String?
-  dosage        String // "3-5g daily"
-  timing        String 
+  dosage        String? // "3-5g daily"
+  timing        String? 
   notes         String? 
   isRecommended Boolean            @default(false)
   sortOrder     Int                @default(0)
