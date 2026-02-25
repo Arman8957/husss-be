@@ -1104,8 +1104,8 @@ model PartnerClinic {
   bookingUrl    String?
   imageUrl      String?
   distanceMiles Float?
-  openingHours  String? // "8:00 AM - 6:00 PM"
-  closeTime     String?
+  openingHours  String? // "8:00 AM 
+  closeTime     String? // 6:00 PM"
   isActive      Boolean  @default(true)
   sortOrder     Int      @default(0)
   latitude      Float?
