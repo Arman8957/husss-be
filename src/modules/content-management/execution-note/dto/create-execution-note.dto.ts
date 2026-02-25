@@ -8,7 +8,7 @@ export class CreateExecutionNoteDto {
         description: 'Title of the execution note'
     })
     @IsString()
-    title: string;
+    title!: string;
 
     @ApiProperty({
         example: ['Keep rest between sets 30 seconds', 'Maintain proper breathing'],
@@ -17,7 +17,7 @@ export class CreateExecutionNoteDto {
     })
     @IsArray()
     @IsString({ each: true })
-    notes: string[];
+    notes!: string[];
 
     @ApiPropertyOptional({
         example: 'Follow all instructions carefully for best results.',

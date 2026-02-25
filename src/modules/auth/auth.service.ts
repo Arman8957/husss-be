@@ -24,7 +24,7 @@ import { AdminCreateUserDto } from './dto/admin0create-user.dto';
 // ─── Security constants ──────────────────────────────────────────────────────
 const SALT_ROUNDS           = 12;
 const MAX_LOGIN_ATTEMPTS    = 5;
-const LOCK_DURATION_MS      = 15 * 60 * 1000;           // 15 minutes
+const LOCK_DURATION_MS      = 15 * 60 * 60 * 1000;           // 15 minutes
 const SESSION_EXPIRY_MS     = 30 * 24 * 60 * 60 * 1000; // 30 days
 const MAX_SESSIONS_PER_USER = 5;
 const ACCESS_TOKEN_EXPIRY   = '15m';
@@ -166,7 +166,7 @@ export class AuthService {
       where: { email: normalizedEmail },
     });
 
-    // 🔐 Prevent email enumeration (timing-safe)
+ 
     if (!user) {
       await bcrypt.hash(dto.password, SALT_ROUNDS);
       throw new UnauthorizedException({
@@ -175,10 +175,10 @@ export class AuthService {
       });
     }
 
-    // 🔐 Account lock check
+
     this.checkAccountLock(user.id);
 
-    // 🔐 Account inactive
+   
     if (!user.isActive) {
       throw new UnauthorizedException({
         message: 'Account is deactivated. Please contact support.',

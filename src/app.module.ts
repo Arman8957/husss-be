@@ -16,8 +16,6 @@ import { ProgramsModule } from './modules/programs/programs.module';
 import { BrfModule } from './modules/content-management/brf/brf.module';
 import { ExecutionNoteModule } from './modules/content-management/execution-note/execution-note.module';
 import { ResearchAndEducationModule } from './modules/content-management/research-and-educaion/research-and-educaion.module';
-import { PartnerClinicModule } from './modules/content-management/partner-clinic/partner-clinic.module';
-import { SupplimentProductModule } from './modules/content-management/suppliment-product/suppliment-product.module';
 
 @Module({
   imports: [
@@ -45,8 +43,6 @@ import { SupplimentProductModule } from './modules/content-management/suppliment
     BrfModule,
     ExecutionNoteModule,
     ResearchAndEducationModule,
-    PartnerClinicModule,
-    SupplimentProductModule,
   ],
   providers: [
 
