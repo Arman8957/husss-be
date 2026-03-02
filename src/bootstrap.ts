@@ -35,7 +35,12 @@ function getLocalIp(): string {
 
 const PORT_CANDIDATES = [
   Number(process.env.PORT) || 3000,
-  3001, 3002, 3007, 5000, 8080, 8000,
+  3001,
+  3002,
+  3007,
+  5000,
+  8080,
+  8000,
 ];
 
 export async function bootstrap() {
@@ -60,7 +65,7 @@ export async function bootstrap() {
   // ────── SECURITY & PERFORMANCE ──────
   // Simplified helmet configuration
   app.use(helmet());
-  
+
   app.use(compression());
   app.use(cookieParser());
 
@@ -70,7 +75,10 @@ export async function bootstrap() {
     .setDescription('The Zenith API description') // Your API description
     .setVersion('1.0')
     // Add a server entry, using the global prefix and version
-    .addServer(`http://localhost:${PORT_CANDIDATES[0]}/api/v1`, 'Local Development Server')
+    .addServer(
+      `http://localhost:${PORT_CANDIDATES[0]}/api/v1`,
+      'Local Development Server',
+    )
     // You can add more servers for staging/production
     // .addServer('https://staging.zenith.com/api/v1', 'Staging Server')
     // .addServer('https://api.zenith.com/api/v1', 'Production Server')
@@ -86,15 +94,39 @@ export async function bootstrap() {
   SwaggerModule.setup('docs', app, document); // [citation:1][citation:3]
 
   // CORS – mobile + web ready
+  // app.enableCors({
+  //   origin: [
+  //     'http://localhost:3000',
+  //     'http://localhost:5173',
+  //     'capacitor://localhost',
+  //     'ionic://localhost',
+  //     'exp://*',
+  //     ...(config.get<string>('CORS_ORIGINS')?.split(',') || []),
+  //   ],
+  //   credentials: true,
+  // });
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'capacitor://localhost',
-      'ionic://localhost',
-      'exp://*',
-      ...(config.get<string>('CORS_ORIGINS')?.split(',') || []),
-    ],
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'capacitor://localhost',
+        'ionic://localhost',
+        ...(config
+          .get<string>('CORS_ORIGINS')
+          ?.split(',')
+          .map((o) => o.trim()) || []),
+      ];
+
+
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
   });
 
@@ -128,7 +160,8 @@ export async function bootstrap() {
   }
 
   const address = httpServer.address();
-  const port = typeof address === 'string' ? 3000 : address?.port || selectedPort;
+  const port =
+    typeof address === 'string' ? 3000 : address?.port || selectedPort;
 
   const url = `http://localhost:${port}`;
   const networkUrl = `http://${getLocalIp()}:${port}`;
@@ -139,6 +172,6 @@ export async function bootstrap() {
   Logger.log(`Network: ${networkUrl}/api/v1`, 'Bootstrap');
   Logger.log(`Health: ${url}/api/v1/health`, 'Bootstrap');
   Logger.log(`📚 API Documentation: ${docsUrl}`, 'Bootstrap'); // Updated log for Swagger
-  
+
   return { app, httpServer };
 }
