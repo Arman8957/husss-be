@@ -911,23 +911,23 @@ model ProgramReview {
 // ══════════════════════════════════════════════════════════════
 
 model Supplement {
-  id             String             @id @default(cuid())
-  name           String
-  category       SupplementCategory
-  description    String?
-  dosage         String? // "3-5g daily"
-  timing         String?
-  notes          String?
-  isRecommended  Boolean            @default(false)
-  sortOrder      Int                @default(0)
-  isActive       Boolean            @default(true)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  vendorname     String?
-  productPrice   String?
-  productBenefit String?
-  productImage   String?
-
+  id                String                   @id @default(cuid())
+  name              String
+  category          SupplementCategory
+  description       String?
+  dosage            String? // "3-5g daily"
+  timing            String?
+  notes             String?
+  isRecommended     Boolean                  @default(false)
+  sortOrder         Int                      @default(0)
+  isActive          Boolean                  @default(true)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  vendorname        String?
+  productPrice      String?
+  productBenefit    String?
+  productImage      String?
+  productPurchesUrl String?
   affiliateProducts AffiliateProduct[]
   userTracking      UserSupplementTracking[]
 
@@ -1166,16 +1166,17 @@ model ExecutionGuideline {
 // ══════════════════════════════════════════════════════════════
 
 model EssentialContent {
-  id           String   @id @default(cuid())
-  title        String
-  description  String?
-  content      String // rich text/markdown
-  imageUrl     String?
-  category     String? // "Health Foundation"
-  sortOrder    Int      @default(0)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  content     String // rich text/markdown
+  imageUrl    String?
+  finalMessage String?
+  category    String? // "Health Foundation"
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@map("essential_contents")
 }

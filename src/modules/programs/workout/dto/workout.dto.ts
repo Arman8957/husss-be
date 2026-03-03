@@ -2,32 +2,40 @@
 
 import {
   IsString, IsOptional, IsInt, IsBoolean, IsArray, IsDateString,
-  Min, Max, ValidateNested, ArrayMinSize, IsEnum,
+  Min, Max, ValidateNested, ArrayMinSize, IsEnum, IsNumber,
 } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SetType, WeightUnit } from '@prisma/client';
 
+// ═══════════════════════════════════════════════════════════════
+// START
+// ═══════════════════════════════════════════════════════════════
+
 export class StartWorkoutDto {
   @ApiProperty({
-    example: 'cmd_day_abc123',
-    description: 'ProgramDay ID from the user\'s active program. Get from GET /programs/active',
+    example: 'clx_day_abc123',
+    description: "ProgramDay ID — get from GET /workout/today → programDayId",
   })
   @IsString()
   programDayId!: string;
 
-  @ApiPropertyOptional({ example: '2026-02-20', description: 'ISO date. Defaults to today.' })
+  @ApiPropertyOptional({ example: '2026-03-03', description: 'ISO date string. Defaults to today.' })
   @IsOptional()
   @IsDateString()
   scheduledDate?: string;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// LOG SET
+// ═══════════════════════════════════════════════════════════════
+
 export class LogSetDto {
-  @ApiProperty({ example: 'cmd_session_xyz', description: 'WorkoutSession ID from startWorkout response' })
+  @ApiProperty({ example: 'clx_session_xyz', description: 'WorkoutSession ID from startWorkout response' })
   @IsString()
   workoutSessionId!: string;
 
-  @ApiProperty({ example: 'cmd_exercise_abc', description: 'Exercise ID' })
+  @ApiProperty({ example: 'clx_exercise_abc', description: 'Exercise ID' })
   @IsString()
   exerciseId!: string;
 
@@ -50,6 +58,7 @@ export class LogSetDto {
 
   @ApiPropertyOptional({ example: 80, description: 'Weight lifted' })
   @IsOptional()
+  @IsNumber()
   weight?: number;
 
   @ApiPropertyOptional({ enum: WeightUnit, default: 'KG' })
@@ -89,11 +98,86 @@ export class BulkLogSetsDto {
   sets!: LogSetDto[];
 }
 
+// ═══════════════════════════════════════════════════════════════
+// EDIT SET LOG  ← NEW
+// PATCH /workout/:logId/sets/:setLogId
+// Correct weight / reps / notes on a logged set.
+// All fields optional — only send what changed.
+// Only allowed while workout is IN_PROGRESS.
+// ═══════════════════════════════════════════════════════════════
+
+export class UpdateSetLogDto {
+  @ApiPropertyOptional({ example: 6, description: 'Corrected actual reps' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  actualReps?: number;
+
+  @ApiPropertyOptional({ example: 5 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  plannedReps?: number;
+
+  @ApiPropertyOptional({ example: 82.5, description: 'Corrected weight' })
+  @IsOptional()
+  @IsNumber()
+  weight?: number;
+
+  @ApiPropertyOptional({ enum: WeightUnit })
+  @IsOptional()
+  @IsEnum(WeightUnit)
+  weightUnit?: WeightUnit;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isCompleted?: boolean;
+
+  @ApiPropertyOptional({ example: 80 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  completionPercent?: number;
+
+  @ApiPropertyOptional({ enum: SetType })
+  @IsOptional()
+  @IsEnum(SetType)
+  setType?: SetType;
+
+  @ApiPropertyOptional({ example: 'Pushed through the last rep' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EDIT WORKOUT LOG  ← NEW
+// PATCH /workout/:logId/notes
+// Edit notes on any workout log (any status).
+// ═══════════════════════════════════════════════════════════════
+
+export class UpdateWorkoutLogDto {
+  @ApiPropertyOptional({ example: 'Great session, felt strong on bench today.' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// REST TIMER
+// ═══════════════════════════════════════════════════════════════
+
 export class StartRestTimerDto {
-  @ApiProperty({ example: 'cmd_setlog_xyz', description: 'WorkoutSetLog ID to attach rest timer to' })
+  @ApiProperty({ example: 'clx_setlog_xyz', description: 'WorkoutSetLog ID' })
   @IsString()
   setLogId!: string;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// COMPLETE / SKIP
+// ═══════════════════════════════════════════════════════════════
 
 export class CompleteWorkoutDto {
   @ApiPropertyOptional({ example: 'Great session today!' })
@@ -101,6 +185,10 @@ export class CompleteWorkoutDto {
   @IsString()
   notes?: string;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// HISTORY QUERY
+// ═══════════════════════════════════════════════════════════════
 
 export class WorkoutHistoryQueryDto {
   @ApiPropertyOptional({ example: 1 })

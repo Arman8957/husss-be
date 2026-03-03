@@ -1,12 +1,12 @@
 // src/workout/workout.service.ts
 
 import {
-  Injectable, NotFoundException, BadRequestException, ConflictException,
+  Injectable, NotFoundException, BadRequestException,
 } from '@nestjs/common';
-
 import {
-  StartWorkoutDto, LogSetDto, BulkLogSetsDto,
-  StartRestTimerDto, CompleteWorkoutDto, WorkoutHistoryQueryDto,
+  StartWorkoutDto, LogSetDto, BulkLogSetsDto, StartRestTimerDto,
+  CompleteWorkoutDto, WorkoutHistoryQueryDto,
+  UpdateSetLogDto, UpdateWorkoutLogDto,
 } from './dto/workout.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 
@@ -15,6 +15,11 @@ export class WorkoutService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ─── Get Today's Workout ────────────────────────────────────────────────────
+  //
+  // FIX: Always returns a real workoutLogId (never null).
+  // Creates a PENDING log on first call so client has an ID immediately.
+  // Subsequent calls return the same PENDING/IN_PROGRESS log.
+  //
   async getTodaysWorkout(userId: string) {
     const active = await this.prisma.userActiveProgram.findUnique({
       where: { userId },
@@ -44,9 +49,7 @@ export class WorkoutService {
       },
     });
 
-    if (!active) {
-      return null;
-    }
+    if (!active) return null;
 
     const currentWeekData = active.program.weeks.find(
       (w) => w.weekNumber === active.currentWeek,
@@ -62,53 +65,187 @@ export class WorkoutService {
       (m) => m.dayType === currentDay.dayType,
     );
 
-    // Check if there's already an in-progress log today
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const existingLog = await this.prisma.workoutLog.findFirst({
+
+    // ── Always guarantee a workoutLogId ───────────────────────────────────────
+    // Look for any active (non-terminal) log for today
+    let workoutLog = await this.prisma.workoutLog.findFirst({
       where: {
         userId,
-        programDayId: currentDay.id,
+        programDayId:  currentDay.id,
         scheduledDate: today,
-        status: { in: ['PENDING', 'IN_PROGRESS'] },
+        status:        { in: ['PENDING', 'IN_PROGRESS'] },
       },
     });
 
+    // None found → create PENDING log so client has an ID from the very first call
+    if (!workoutLog) {
+      workoutLog = await this.prisma.workoutLog.create({
+        data: {
+          userId,
+          programDayId:  currentDay.id,
+          programId:     active.programId,
+          weekNumber:    active.currentWeek,
+          dayNumber:     active.currentDay,
+          status:        'PENDING',
+          scheduledDate: today,
+        },
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const mainExercises = currentDay.exercises.filter((e) => !e.isBFR && !e.isAbs);
-    const bfrExercises = currentDay.exercises.filter((e) => e.isBFR);
-    const absExercises = currentDay.exercises.filter((e) => e.isAbs);
+    const bfrExercises  = currentDay.exercises.filter((e) => e.isBFR);
+    const absExercises  = currentDay.exercises.filter((e) => e.isAbs);
 
     return {
-      currentWeek: active.currentWeek,
-      currentDay: active.currentDay,
-      totalWeeks: active.program.durationWeeks,
-      programName: active.program.name,
-      dayName: currentDay.name,
-      dayType: currentDay.dayType,
+      // Progress
+      currentWeek:    active.currentWeek,
+      currentDay:     active.currentDay,
+      totalWeeks:     active.program.durationWeeks,
+      // Program info
+      programName:    active.program.name,
+      dayName:        currentDay.name,
+      dayType:        currentDay.dayType,
+      muscleGroups:   (currentDay as any).muscleGroups ?? [],
       trainingMethod: trainingMethodForDay?.trainingMethod ?? null,
-      bfrEnabled: active.bfrEnabled,
+      // User preferences
+      bfrEnabled:     active.bfrEnabled,
       absWorkoutType: active.absWorkoutType,
+      // Exercises
       mainExercises,
-      bfrExercises: active.bfrEnabled ? bfrExercises : [],
+      bfrExercises:   active.bfrEnabled ? bfrExercises : [],
       absExercises,
-      workoutLogId: existingLog?.id ?? null,
-      workoutStatus: existingLog?.status ?? 'PENDING',
-      programDayId: currentDay.id,
+      // ── Always a real ID — client uses this for ALL subsequent calls ─────────
+      workoutLogId:  workoutLog.id,      // never null
+      workoutStatus: workoutLog.status,  // 'PENDING' | 'IN_PROGRESS'
+      programDayId:  currentDay.id,
+    };
+  }
+
+  // ─── Get Single Specific Day ─────────────────────────────────────────────────
+  //
+  // GET /workout/day/:weekNumber/:dayNumber
+  // Fetch any day from the active program by week+day number.
+  // Used for program calendar previews, past day review, schedule browsing.
+  // workoutLogId is null if the day hasn't been started (no log exists yet).
+  //
+  async getWorkoutDay(userId: string, weekNumber: number, dayNumber: number) {
+    const active = await this.prisma.userActiveProgram.findUnique({
+      where: { userId },
+      include: {
+        program: {
+          include: {
+            weeks: {
+              where:   { weekNumber },
+              include: {
+                trainingMethods: { include: { trainingMethod: true } },
+                days: {
+                  where:   { dayNumber },
+                  include: {
+                    exercises: {
+                      orderBy: { sortOrder: 'asc' },
+                      include: {
+                        exercise: { include: { media: { orderBy: { sortOrder: 'asc' } } } },
+                        sets:     { orderBy: { setNumber: 'asc' } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!active) throw new NotFoundException('No active program');
+
+    const weekData = active.program.weeks[0];
+    if (!weekData) {
+      throw new NotFoundException(
+        `Week ${weekNumber} not found in program "${active.program.name}"`,
+      );
+    }
+
+    const day = weekData.days[0];
+    if (!day) {
+      throw new NotFoundException(
+        `Day ${dayNumber} not found in week ${weekNumber}`,
+      );
+    }
+
+    const trainingMethodForDay = weekData.trainingMethods.find(
+      (m) => m.dayType === day.dayType,
+    );
+
+    // Look for an existing log for this specific day (any status)
+    const existingLog = await this.prisma.workoutLog.findFirst({
+      where:   { userId, programDayId: day.id },
+      orderBy: { createdAt: 'desc' },   // most recent if re-done
+      select:  { id: true, status: true },
+    });
+
+    const mainExercises = day.exercises.filter((e) => !e.isBFR && !e.isAbs);
+    const bfrExercises  = day.exercises.filter((e) => e.isBFR);
+    const absExercises  = day.exercises.filter((e) => e.isAbs);
+
+    return {
+      // Position
+      weekNumber,
+      dayNumber,
+      totalWeeks:  active.program.durationWeeks,
+      isCurrentDay: (
+        weekNumber === active.currentWeek &&
+        dayNumber  === active.currentDay
+      ),
+      isPast: (
+        weekNumber < active.currentWeek ||
+        (weekNumber === active.currentWeek && dayNumber < active.currentDay)
+      ),
+      isFuture: (
+        weekNumber > active.currentWeek ||
+        (weekNumber === active.currentWeek && dayNumber > active.currentDay)
+      ),
+      // Program info
+      programName:    active.program.name,
+      dayName:        day.name,
+      dayType:        day.dayType,
+      muscleGroups:   (day as any).muscleGroups ?? [],
+      trainingMethod: trainingMethodForDay?.trainingMethod ?? null,
+      // User preferences
+      bfrEnabled:     active.bfrEnabled,
+      absWorkoutType: active.absWorkoutType,
+      // Exercises
+      mainExercises,
+      bfrExercises:   active.bfrEnabled ? bfrExercises : [],
+      absExercises,
+      // Log state — null if day not started yet
+      workoutLogId:  existingLog?.id     ?? null,
+      workoutStatus: existingLog?.status ?? null,
+      programDayId:  day.id,
     };
   }
 
   // ─── Start Workout ──────────────────────────────────────────────────────────
+  //
+  // Transitions the PENDING log (from getTodaysWorkout) → IN_PROGRESS
+  // and creates a WorkoutSession.
+  // If called without getTodaysWorkout first, creates the log fresh.
+  // Resumes if already IN_PROGRESS.
+  //
   async startWorkout(userId: string, dto: StartWorkoutDto) {
     const active = await this.prisma.userActiveProgram.findUnique({ where: { userId } });
-    if (!active) throw new NotFoundException('No active program. Please activate a program first.');
+    if (!active) {
+      throw new NotFoundException('No active program. Please activate a program first.');
+    }
 
     const day = await this.prisma.programDay.findFirst({
       where: { id: dto.programDayId, programWeek: { programId: active.programId } },
       include: {
         programWeek: {
-          include: {
-            trainingMethods: { include: { trainingMethod: true } },
-          },
+          include: { trainingMethods: { include: { trainingMethod: true } } },
         },
         exercises: {
           orderBy: { sortOrder: 'asc' },
@@ -121,43 +258,57 @@ export class WorkoutService {
     });
     if (!day) throw new NotFoundException(`Program day "${dto.programDayId}" not found`);
 
-    const scheduledDate = dto.scheduledDate ? new Date(dto.scheduledDate) : new Date();
-    scheduledDate.setHours(0, 0, 0, 0);
-
-    // Resume if in-progress log exists
-    const existingLog = await this.prisma.workoutLog.findFirst({
-      where: { userId, programDayId: dto.programDayId, status: 'IN_PROGRESS' },
-      include: { workoutSessions: { include: { setLogs: true } } },
+    // Resume if already IN_PROGRESS
+    const inProgressLog = await this.prisma.workoutLog.findFirst({
+      where:   { userId, programDayId: dto.programDayId, status: 'IN_PROGRESS' },
+      include: { workoutSessions: { include: { trainingMethod: true, setLogs: true } } },
     });
-    if (existingLog) {
-      return { resumed: true, workoutLog: existingLog };
+    if (inProgressLog) {
+      return { resumed: true, workoutLog: inProgressLog };
     }
 
     const trainingMethodForDay = day.programWeek.trainingMethods.find(
       (m) => m.dayType === day.dayType,
     );
 
-    const workoutLog = await this.prisma.$transaction(async (tx) => {
-      const log = await tx.workoutLog.create({
-        data: {
-          userId,
-          programDayId: day.id,
-          programId: active.programId,
-          weekNumber: active.currentWeek,
-          dayNumber: active.currentDay,
-          status: 'IN_PROGRESS',
-          scheduledDate,
-          startedAt: new Date(),
-        },
-      });
+    const scheduledDate = dto.scheduledDate ? new Date(dto.scheduledDate) : new Date();
+    scheduledDate.setHours(0, 0, 0, 0);
 
-      // Create one session per day (could be extended to per-exercise)
+    // Promote existing PENDING log → IN_PROGRESS, or create fresh
+    const pendingLog = await this.prisma.workoutLog.findFirst({
+      where: { userId, programDayId: dto.programDayId, status: 'PENDING' },
+    });
+
+    const workoutLog = await this.prisma.$transaction(async (tx) => {
+      let log;
+
+      if (pendingLog) {
+        // Promote PENDING → IN_PROGRESS (same ID, client doesn't need to update)
+        log = await tx.workoutLog.update({
+          where: { id: pendingLog.id },
+          data:  { status: 'IN_PROGRESS', startedAt: new Date() },
+        });
+      } else {
+        log = await tx.workoutLog.create({
+          data: {
+            userId,
+            programDayId:  day.id,
+            programId:     active.programId,
+            weekNumber:    active.currentWeek,
+            dayNumber:     active.currentDay,
+            status:        'IN_PROGRESS',
+            scheduledDate,
+            startedAt:     new Date(),
+          },
+        });
+      }
+
       await tx.workoutSession.create({
         data: {
-          workoutLogId: log.id,
-          programDayId: day.id,
+          workoutLogId:     log.id,
+          programDayId:     day.id,
           trainingMethodId: trainingMethodForDay?.trainingMethodId ?? null,
-          sortOrder: 0,
+          sortOrder:        0,
         },
       });
 
@@ -165,20 +316,17 @@ export class WorkoutService {
     });
 
     const fullLog = await this.prisma.workoutLog.findUnique({
-      where: { id: workoutLog.id },
-      include: {
-        workoutSessions: {
-          include: { trainingMethod: true, setLogs: true },
-        },
-      },
+      where:   { id: workoutLog.id },
+      include: { workoutSessions: { include: { trainingMethod: true, setLogs: true } } },
     });
 
     return { resumed: false, workoutLog: fullLog };
   }
 
   // ─── Log Set ────────────────────────────────────────────────────────────────
+
   async logSet(userId: string, workoutLogId: string, dto: LogSetDto) {
-    const log = await this.validateWorkoutLog(userId, workoutLogId);
+    await this.validateWorkoutLog(userId, workoutLogId, ['IN_PROGRESS']);
 
     const session = await this.prisma.workoutSession.findFirst({
       where: { workoutLogId, id: dto.workoutSessionId },
@@ -187,54 +335,158 @@ export class WorkoutService {
       throw new NotFoundException(`Session "${dto.workoutSessionId}" not found in this workout`);
     }
 
-    // Idempotent upsert — re-logging same set updates it
-    const setLog = await this.prisma.workoutSetLog.upsert({
-      where: {
-        // Fallback to findFirst since there's no compound unique on this model
-        // We create a pseudo-id approach: check first then create/update
-        id: await this.findSetLogId(dto.workoutSessionId, dto.exerciseId, dto.setNumber),
-      },
+    const existingId = await this.findSetLogId(dto.workoutSessionId, dto.exerciseId, dto.setNumber);
+
+    return this.prisma.workoutSetLog.upsert({
+      where:  { id: existingId },
       create: {
-        workoutSessionId: dto.workoutSessionId,
-        exerciseId: dto.exerciseId,
-        setNumber: dto.setNumber,
-        plannedReps: dto.plannedReps ?? null,
-        actualReps: dto.actualReps ?? null,
-        weight: dto.weight ?? null,
-        weightUnit: dto.weightUnit ?? 'KG',
-        isCompleted: dto.isCompleted ?? true,
-        completionPercent: dto.completionPercent ?? 100,
-        setType: dto.setType ?? 'NORMAL',
-        notes: dto.notes ?? null,
+        workoutSessionId:  dto.workoutSessionId,
+        exerciseId:        dto.exerciseId,
+        setNumber:         dto.setNumber,
+        plannedReps:       dto.plannedReps       ?? null,
+        actualReps:        dto.actualReps         ?? null,
+        weight:            dto.weight             ?? null,
+        weightUnit:        dto.weightUnit         ?? 'KG',
+        isCompleted:       dto.isCompleted        ?? true,
+        completionPercent: dto.completionPercent  ?? 100,
+        setType:           dto.setType            ?? 'NORMAL',
+        notes:             dto.notes              ?? null,
       },
       update: {
-        plannedReps: dto.plannedReps ?? undefined,
-        actualReps: dto.actualReps ?? undefined,
-        weight: dto.weight ?? undefined,
-        weightUnit: dto.weightUnit ?? undefined,
-        isCompleted: dto.isCompleted ?? undefined,
-        completionPercent: dto.completionPercent ?? undefined,
-        setType: dto.setType ?? undefined,
-        notes: dto.notes ?? undefined,
+        plannedReps:       dto.plannedReps        !== undefined ? dto.plannedReps       : undefined,
+        actualReps:        dto.actualReps          !== undefined ? dto.actualReps        : undefined,
+        weight:            dto.weight              !== undefined ? dto.weight            : undefined,
+        weightUnit:        dto.weightUnit          !== undefined ? dto.weightUnit        : undefined,
+        isCompleted:       dto.isCompleted         !== undefined ? dto.isCompleted       : undefined,
+        completionPercent: dto.completionPercent   !== undefined ? dto.completionPercent : undefined,
+        setType:           dto.setType             !== undefined ? dto.setType           : undefined,
+        notes:             dto.notes               !== undefined ? dto.notes             : undefined,
       },
     });
-
-    return setLog;
   }
 
   async bulkLogSets(userId: string, workoutLogId: string, dto: BulkLogSetsDto) {
-    await this.validateWorkoutLog(userId, workoutLogId);
-
+    await this.validateWorkoutLog(userId, workoutLogId, ['IN_PROGRESS']);
     const results = await Promise.all(
       dto.sets.map((s) => this.logSet(userId, workoutLogId, s)),
     );
-
     return { logged: results.length, sets: results };
   }
 
-  // ─── Rest Timer ─────────────────────────────────────────────────────────────
-  async startRestTimer(userId: string, workoutLogId: string, dto: StartRestTimerDto) {
+  // ─── Edit Set Log ← NEW ─────────────────────────────────────────────────────
+  // PATCH /workout/:logId/sets/:setLogId
+  // Correct a logged set (weight, reps, notes).
+  // Only while workout is IN_PROGRESS.
+  //
+  async updateSetLog(
+    userId: string,
+    workoutLogId: string,
+    setLogId: string,
+    dto: UpdateSetLogDto,
+  ) {
+    await this.validateWorkoutLog(userId, workoutLogId, ['IN_PROGRESS']);
+
+    // Verify set belongs to this workout log
+    const setLog = await this.prisma.workoutSetLog.findFirst({
+      where: { id: setLogId, workoutSession: { workoutLogId } },
+    });
+    if (!setLog) {
+      throw new NotFoundException(
+        `Set log "${setLogId}" not found in workout "${workoutLogId}"`,
+      );
+    }
+
+    return this.prisma.workoutSetLog.update({
+      where: { id: setLogId },
+      data: {
+        ...(dto.actualReps        !== undefined && { actualReps:        dto.actualReps }),
+        ...(dto.plannedReps       !== undefined && { plannedReps:       dto.plannedReps }),
+        ...(dto.weight            !== undefined && { weight:            dto.weight }),
+        ...(dto.weightUnit        !== undefined && { weightUnit:        dto.weightUnit }),
+        ...(dto.isCompleted       !== undefined && { isCompleted:       dto.isCompleted }),
+        ...(dto.completionPercent !== undefined && { completionPercent: dto.completionPercent }),
+        ...(dto.setType           !== undefined && { setType:           dto.setType }),
+        ...(dto.notes             !== undefined && { notes:             dto.notes }),
+      },
+    });
+  }
+
+  // ─── Delete Set Log ← NEW ───────────────────────────────────────────────────
+  // DELETE /workout/:logId/sets/:setLogId
+  // Remove a wrongly logged set.
+  // Only while workout is IN_PROGRESS.
+  //
+  async deleteSetLog(userId: string, workoutLogId: string, setLogId: string) {
+    await this.validateWorkoutLog(userId, workoutLogId, ['IN_PROGRESS']);
+
+    const setLog = await this.prisma.workoutSetLog.findFirst({
+      where: { id: setLogId, workoutSession: { workoutLogId } },
+    });
+    if (!setLog) {
+      throw new NotFoundException(
+        `Set log "${setLogId}" not found in workout "${workoutLogId}"`,
+      );
+    }
+
+    await this.prisma.workoutSetLog.delete({ where: { id: setLogId } });
+    return { success: true, message: 'Set deleted' };
+  }
+
+  // ─── Edit Workout Notes ← NEW ────────────────────────────────────────────────
+  // PATCH /workout/:logId/notes
+  // Edit notes on any log regardless of status.
+  //
+  async updateWorkoutLog(userId: string, workoutLogId: string, dto: UpdateWorkoutLogDto) {
     await this.validateWorkoutLog(userId, workoutLogId);
+
+    return this.prisma.workoutLog.update({
+      where: { id: workoutLogId },
+      data:  { ...(dto.notes !== undefined && { notes: dto.notes }) },
+      include: {
+        workoutSessions: { include: { trainingMethod: true, setLogs: true } },
+      },
+    });
+  }
+
+  // ─── Cancel Workout ← NEW ───────────────────────────────────────────────────
+  // DELETE /workout/:logId
+  // Cancel a PENDING or IN_PROGRESS workout.
+  // Deletes log + all sessions + all set logs.
+  // Does NOT advance program — use skip for that.
+  //
+  async cancelWorkout(userId: string, workoutLogId: string) {
+    const log = await this.validateWorkoutLog(userId, workoutLogId);
+
+    if (!['PENDING', 'IN_PROGRESS'].includes(log.status)) {
+      throw new BadRequestException(
+        `Cannot cancel a ${log.status} workout. ` +
+        `Only PENDING and IN_PROGRESS workouts can be cancelled.`,
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const sessions = await tx.workoutSession.findMany({
+        where:  { workoutLogId },
+        select: { id: true },
+      });
+
+      if (sessions.length) {
+        await tx.workoutSetLog.deleteMany({
+          where: { workoutSessionId: { in: sessions.map((s) => s.id) } },
+        });
+        await tx.workoutSession.deleteMany({ where: { workoutLogId } });
+      }
+
+      await tx.workoutLog.delete({ where: { id: workoutLogId } });
+    });
+
+    return { success: true, message: 'Workout cancelled and removed' };
+  }
+
+  // ─── Rest Timer ─────────────────────────────────────────────────────────────
+
+  async startRestTimer(userId: string, workoutLogId: string, dto: StartRestTimerDto) {
+    await this.validateWorkoutLog(userId, workoutLogId, ['IN_PROGRESS']);
 
     const setLog = await this.prisma.workoutSetLog.findUnique({
       where: { id: dto.setLogId },
@@ -243,49 +495,42 @@ export class WorkoutService {
 
     return this.prisma.workoutSetLog.update({
       where: { id: dto.setLogId },
-      data: { restStartedAt: new Date(), restEndedAt: null },
+      data:  { restStartedAt: new Date(), restEndedAt: null },
     });
   }
 
   async endRestTimer(userId: string, workoutLogId: string, setLogId: string) {
-    await this.validateWorkoutLog(userId, workoutLogId);
+    await this.validateWorkoutLog(userId, workoutLogId, ['IN_PROGRESS']);
 
     const setLog = await this.prisma.workoutSetLog.findUnique({
       where: { id: setLogId },
     });
-    if (!setLog) throw new NotFoundException(`Set log "${setLogId}" not found`);
+    if (!setLog)             throw new NotFoundException(`Set log "${setLogId}" not found`);
     if (!setLog.restStartedAt) throw new BadRequestException('Rest timer was not started');
-
-    const restEndedAt = new Date();
-    const durationSeconds = Math.round(
-      (restEndedAt.getTime() - setLog.restStartedAt.getTime()) / 1000,
-    );
 
     return this.prisma.workoutSetLog.update({
       where: { id: setLogId },
-      data: { restEndedAt },
+      data:  { restEndedAt: new Date() },
     });
   }
 
   // ─── Complete Workout ────────────────────────────────────────────────────────
+
   async completeWorkout(userId: string, workoutLogId: string, dto: CompleteWorkoutDto) {
     const log = await this.validateWorkoutLog(userId, workoutLogId, ['IN_PROGRESS']);
 
     const sessions = await this.prisma.workoutSession.findMany({
-      where: { workoutLogId },
+      where:   { workoutLogId },
       include: { setLogs: true },
     });
 
-    // Calculate total volume
-    const totalVolume = sessions.reduce((total, session) => {
-      return total + session.setLogs.reduce((sum, sl) => {
-        const weight = sl.weight ?? 0;
-        const reps = sl.actualReps ?? 0;
-        return sum + weight * reps;
-      }, 0);
-    }, 0);
+    const totalVolume = sessions.reduce((total, session) =>
+      total + session.setLogs.reduce(
+        (sum, sl) => sum + (sl.weight ?? 0) * (sl.actualReps ?? 0), 0,
+      ), 0,
+    );
 
-    const completedAt = new Date();
+    const completedAt     = new Date();
     const durationSeconds = log.startedAt
       ? Math.round((completedAt.getTime() - log.startedAt.getTime()) / 1000)
       : null;
@@ -294,95 +539,67 @@ export class WorkoutService {
     if (!active) throw new NotFoundException('No active program found');
 
     const program = await this.prisma.program.findUnique({
-      where: { id: active.programId },
+      where:  { id: active.programId },
       select: { durationWeeks: true, daysPerWeek: true },
     });
     if (!program) throw new NotFoundException('Program not found');
 
     await this.prisma.$transaction(async (tx) => {
-      // Mark log complete
       await tx.workoutLog.update({
         where: { id: workoutLogId },
-        data: {
-          status: 'COMPLETED',
-          completedAt,
-          durationSeconds,
-          totalVolume,
-          notes: dto.notes ?? null,
+        data:  {
+          status: 'COMPLETED', completedAt, durationSeconds, totalVolume,
+          notes:  dto.notes ?? null,
         },
       });
 
-      // Advance program progress
-      let newDay = active.currentDay + 1;
+      let newDay  = active.currentDay + 1;
       let newWeek = active.currentWeek;
       let programCompleted = false;
 
       if (newDay > program.daysPerWeek) {
-        newDay = 1;
+        newDay  = 1;
         newWeek = active.currentWeek + 1;
       }
 
       if (newWeek > program.durationWeeks) {
-        // Program completed
         programCompleted = true;
-
         await tx.userProgram.updateMany({
           where: { userId, programId: active.programId, isCompleted: false },
-          data: {
-            isCompleted: true,
-            completedAt,
-            completedWeeks: program.durationWeeks,
-          },
+          data:  { isCompleted: true, completedAt, completedWeeks: program.durationWeeks },
         });
-
         await tx.userActivityLog.create({
-          data: {
-            userId,
-            type: 'COMPLETED_PROGRAM',
-            meta: { programId: active.programId },
-          },
+          data: { userId, type: 'COMPLETED_PROGRAM', meta: { programId: active.programId } },
         });
-
         await tx.programAnalytics.updateMany({
           where: { programId: active.programId },
-          data: { completedCount: { increment: 1 }, activeEnrollments: { decrement: 1 } },
+          data:  { completedCount: { increment: 1 }, activeEnrollments: { decrement: 1 } },
         });
       } else {
         await tx.userActiveProgram.update({
           where: { userId },
-          data: { currentDay: newDay, currentWeek: newWeek },
+          data:  { currentDay: newDay, currentWeek: newWeek },
         });
       }
 
-      // Update user stats
       await tx.user.update({
         where: { id: userId },
-        data: {
-          totalWorkouts: { increment: 1 },
-          lastActiveDate: completedAt,
-        },
+        data:  { totalWorkouts: { increment: 1 }, lastActiveDate: completedAt },
       });
 
-      // Update streak
       await this.updateStreak(tx, userId, completedAt);
 
-      // Log activity
       await tx.userActivityLog.create({
         data: {
           userId,
           type: 'COMPLETED_WORKOUT',
-          meta: {
-            workoutLogId,
-            totalVolume,
-            durationSeconds,
-            programCompleted,
-          },
+          meta: { workoutLogId, totalVolume, durationSeconds, programCompleted },
         },
       });
     });
 
     return this.prisma.workoutLog.findUnique({
-      where: { id: workoutLogId },
+      where:   { id: workoutLogId },
       include: { workoutSessions: { include: { setLogs: true } } },
     });
   }
@@ -398,19 +615,19 @@ export class WorkoutService {
     if (!active) throw new NotFoundException('No active program');
 
     const program = await this.prisma.program.findUnique({
-      where: { id: active.programId },
+      where:  { id: active.programId },
       select: { durationWeeks: true, daysPerWeek: true },
     });
 
     await this.prisma.$transaction(async (tx) => {
       await tx.workoutLog.update({
         where: { id: workoutLogId },
-        data: { status: 'SKIPPED' },
+        data:  { status: 'SKIPPED' },
       });
 
-      // Still advance the program position
-      let newDay = active.currentDay + 1;
+      let newDay  = active.currentDay + 1;
       let newWeek = active.currentWeek;
+
       if (newDay > (program?.daysPerWeek ?? 3)) {
         newDay = 1;
         newWeek++;
@@ -418,7 +635,7 @@ export class WorkoutService {
       if (newWeek <= (program?.durationWeeks ?? 10)) {
         await tx.userActiveProgram.update({
           where: { userId },
-          data: { currentDay: newDay, currentWeek: newWeek },
+          data:  { currentDay: newDay, currentWeek: newWeek },
         });
       }
     });
@@ -426,9 +643,11 @@ export class WorkoutService {
     return { success: true, message: 'Workout skipped. Program advanced to next day.' };
   }
 
+  // ─── Get Log / History ───────────────────────────────────────────────────────
+
   async getWorkoutLog(userId: string, workoutLogId: string) {
     const log = await this.prisma.workoutLog.findFirst({
-      where: { id: workoutLogId, userId },
+      where:   { id: workoutLogId, userId },
       include: {
         workoutSessions: {
           include: {
@@ -446,15 +665,15 @@ export class WorkoutService {
   }
 
   async getWorkoutHistory(userId: string, query: WorkoutHistoryQueryDto) {
-    const page = query.page ?? 1;
+    const page  = query.page  ?? 1;
     const limit = query.limit ?? 20;
 
     const [data, total] = await Promise.all([
       this.prisma.workoutLog.findMany({
-        where: { userId, status: { in: ['COMPLETED', 'SKIPPED'] } },
+        where:   { userId, status: { in: ['COMPLETED', 'SKIPPED'] } },
         orderBy: { scheduledDate: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
+        skip:    (page - 1) * limit,
+        take:    limit,
         include: {
           workoutSessions: {
             include: {
@@ -468,10 +687,7 @@ export class WorkoutService {
       }),
     ]);
 
-    return {
-      data,
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    };
+    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
   // ─── Private Helpers ────────────────────────────────────────────────────────
@@ -482,7 +698,9 @@ export class WorkoutService {
     });
     if (!log) throw new NotFoundException(`Workout log "${logId}" not found`);
     if (allowedStatuses && !allowedStatuses.includes(log.status)) {
-      throw new BadRequestException(`Workout is ${log.status}, cannot perform this action`);
+      throw new BadRequestException(
+        `Workout is ${log.status}. Allowed for this action: [${allowedStatuses.join(', ')}]`,
+      );
     }
     return log;
   }
@@ -493,16 +711,15 @@ export class WorkoutService {
     setNumber: number,
   ): Promise<string> {
     const existing = await this.prisma.workoutSetLog.findFirst({
-      where: { workoutSessionId: sessionId, exerciseId, setNumber },
+      where:  { workoutSessionId: sessionId, exerciseId, setNumber },
       select: { id: true },
     });
-    // Return a non-existent ID if not found (triggers 'create' branch in upsert)
     return existing?.id ?? 'not-found-create-new';
   }
 
   private async updateStreak(tx: any, userId: string, now: Date) {
     const user = await tx.user.findUnique({
-      where: { id: userId },
+      where:  { id: userId },
       select: { streakDays: true, lastActiveDate: true },
     });
     if (!user) return;
@@ -517,17 +734,12 @@ export class WorkoutService {
 
     const last = new Date(user.lastActiveDate);
     last.setHours(0, 0, 0, 0);
-
     const diffDays = Math.round((today.getTime() - last.getTime()) / 86400000);
 
     let newStreak = user.streakDays;
-    if (diffDays === 0) {
-      // Same day, no change
-    } else if (diffDays === 1) {
-      newStreak = user.streakDays + 1;
-    } else {
-      newStreak = 1; // Reset
-    }
+    if      (diffDays === 0) { /* same day — no change */ }
+    else if (diffDays === 1) { newStreak = user.streakDays + 1; }
+    else                     { newStreak = 1; }
 
     await tx.user.update({ where: { id: userId }, data: { streakDays: newStreak } });
   }

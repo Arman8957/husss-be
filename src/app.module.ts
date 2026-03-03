@@ -17,6 +17,8 @@ import { BrfModule } from './modules/content-management/brf/brf.module';
 import { ExecutionNoteModule } from './modules/content-management/execution-note/execution-note.module';
 import { ResearchAndEducationModule } from './modules/content-management/research-and-educaion/research-and-educaion.module';
 import { PartnerClinicModule } from './modules/content-management/partner-clinic/partner-clinic.module';
+import { EssentialContentModule } from './modules/content-management/essential-content/essential-content.module';
+import { SupplimentModule } from './modules/content-management/suppliment/suppliment.module';
 
 @Module({
   imports: [
@@ -44,7 +46,9 @@ import { PartnerClinicModule } from './modules/content-management/partner-clinic
     BrfModule,
     ExecutionNoteModule,
     ResearchAndEducationModule,
-    PartnerClinicModule
+    PartnerClinicModule,
+    EssentialContentModule,
+    SupplimentModule
   ],
   providers: [
 
