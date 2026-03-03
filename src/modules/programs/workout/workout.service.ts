@@ -124,6 +124,110 @@ export class WorkoutService {
     };
   }
 
+  // ─── Get Single Specific Day ─────────────────────────────────────────────────
+  //
+  // GET /workout/day/:weekNumber/:dayNumber
+  // Fetch any day from the active program by week+day number.
+  // Used for program calendar previews, past day review, schedule browsing.
+  // workoutLogId is null if the day hasn't been started (no log exists yet).
+  //
+  async getWorkoutDay(userId: string, weekNumber: number, dayNumber: number) {
+    const active = await this.prisma.userActiveProgram.findUnique({
+      where: { userId },
+      include: {
+        program: {
+          include: {
+            weeks: {
+              where:   { weekNumber },
+              include: {
+                trainingMethods: { include: { trainingMethod: true } },
+                days: {
+                  where:   { dayNumber },
+                  include: {
+                    exercises: {
+                      orderBy: { sortOrder: 'asc' },
+                      include: {
+                        exercise: { include: { media: { orderBy: { sortOrder: 'asc' } } } },
+                        sets:     { orderBy: { setNumber: 'asc' } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!active) throw new NotFoundException('No active program');
+
+    const weekData = active.program.weeks[0];
+    if (!weekData) {
+      throw new NotFoundException(
+        `Week ${weekNumber} not found in program "${active.program.name}"`,
+      );
+    }
+
+    const day = weekData.days[0];
+    if (!day) {
+      throw new NotFoundException(
+        `Day ${dayNumber} not found in week ${weekNumber}`,
+      );
+    }
+
+    const trainingMethodForDay = weekData.trainingMethods.find(
+      (m) => m.dayType === day.dayType,
+    );
+
+    // Look for an existing log for this specific day (any status)
+    const existingLog = await this.prisma.workoutLog.findFirst({
+      where:   { userId, programDayId: day.id },
+      orderBy: { createdAt: 'desc' },   // most recent if re-done
+      select:  { id: true, status: true },
+    });
+
+    const mainExercises = day.exercises.filter((e) => !e.isBFR && !e.isAbs);
+    const bfrExercises  = day.exercises.filter((e) => e.isBFR);
+    const absExercises  = day.exercises.filter((e) => e.isAbs);
+
+    return {
+      // Position
+      weekNumber,
+      dayNumber,
+      totalWeeks:  active.program.durationWeeks,
+      isCurrentDay: (
+        weekNumber === active.currentWeek &&
+        dayNumber  === active.currentDay
+      ),
+      isPast: (
+        weekNumber < active.currentWeek ||
+        (weekNumber === active.currentWeek && dayNumber < active.currentDay)
+      ),
+      isFuture: (
+        weekNumber > active.currentWeek ||
+        (weekNumber === active.currentWeek && dayNumber > active.currentDay)
+      ),
+      // Program info
+      programName:    active.program.name,
+      dayName:        day.name,
+      dayType:        day.dayType,
+      muscleGroups:   (day as any).muscleGroups ?? [],
+      trainingMethod: trainingMethodForDay?.trainingMethod ?? null,
+      // User preferences
+      bfrEnabled:     active.bfrEnabled,
+      absWorkoutType: active.absWorkoutType,
+      // Exercises
+      mainExercises,
+      bfrExercises:   active.bfrEnabled ? bfrExercises : [],
+      absExercises,
+      // Log state — null if day not started yet
+      workoutLogId:  existingLog?.id     ?? null,
+      workoutStatus: existingLog?.status ?? null,
+      programDayId:  day.id,
+    };
+  }
+
   // ─── Start Workout ──────────────────────────────────────────────────────────
   //
   // Transitions the PENDING log (from getTodaysWorkout) → IN_PROGRESS

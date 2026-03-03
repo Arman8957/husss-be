@@ -1171,6 +1171,7 @@ model EssentialContent {
   description String?
   content     String // rich text/markdown
   imageUrl    String?
+  finalMessage String?
   category    String? // "Health Foundation"
   sortOrder   Int      @default(0)
   isActive    Boolean  @default(true)

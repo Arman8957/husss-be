@@ -1,5 +1,3 @@
-// src/workout/workout.controller.ts
-
 import {
   Controller, Get, Post, Patch, Delete, Body, Param,
   Query, UseGuards, HttpCode, HttpStatus,
@@ -35,6 +33,31 @@ Use programDayId to call POST /workout/start, and workoutLogId for all subsequen
   })
   getTodaysWorkout(@CurrentUser() user: any) {
     return this.workoutService.getTodaysWorkout(user.id);
+  }
+
+  // ─── Single Specific Day ──────────────────────────────────────
+
+  @Get('day/:weekNumber/:dayNumber')
+  @ApiOperation({
+    summary: 'Get Single Day Workout',
+    description: `Fetch any single day from the active program by week + day number.
+
+Useful for:
+- Previewing upcoming days before they reach "today"
+- Reviewing a past day's plan
+- Rendering a full program calendar week by week
+
+Returns the same exercise shape as GET /today.
+workoutLogId is included if a log already exists for that day, null otherwise (that day hasn't been started yet).`,
+  })
+  @ApiParam({ name: 'weekNumber', description: 'Week number (1-based, e.g. 1–10)', example: '2' })
+  @ApiParam({ name: 'dayNumber',  description: 'Day number within that week (1-based)', example: '1' })
+  getWorkoutDay(
+    @Param('weekNumber') weekNumber: string,
+    @Param('dayNumber')  dayNumber: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.workoutService.getWorkoutDay(user.id, +weekNumber, +dayNumber);
   }
 
   // ═══════════════════════════════════════════════════════════════
