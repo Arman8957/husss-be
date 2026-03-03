@@ -1,36 +1,41 @@
-// model PartnerClinic {
-//   id            String   @id @default(cuid())
-//   name          String
-//   description   String?
-//   address       String
-//   city          String
-//   country       String
-//   phone         String?
-//   email         String?
-//   website       String?
-//   bookingUrl    String?
-//   imageUrl      String?
-//   distanceMiles Float?
-//   openingHours  String? // "8:00 AM 
-//   closeTime     String? // 6:00 PM"
-//   isActive      Boolean  @default(true)
-//   sortOrder     Int      @default(0)
-//   latitude      Float?
-//   longitude     Float?
-//   createdAt     DateTime @default(now())
-//   updatedAt     DateTime @updatedAt
+import { ApiProperty } from "@nestjs/swagger";
+import { IsNotEmpty, IsString } from "class-validator";
 
-//   @@index([country, city])
-//   @@map("partner_clinics")
-// }
 
 
 export class PartnarClinicDto {
+    @ApiProperty({ example: "Green Life Clinic" })
+    @IsString()
+    @IsNotEmpty()
     name: string;
+
+    @ApiProperty({ example: "+8801712345678" })
+    @IsString()
+    @IsNotEmpty()
     phone: string;
+
+    @ApiProperty({ example: "Bangladesh" })
+    @IsString()
+    @IsNotEmpty()
     country: string;
+
+    @ApiProperty({ example: "Dhaka" })
+    @IsString()
+    @IsNotEmpty()
     city: string;
+
+    @ApiProperty({ example: "House 12, Road 5, Dhanmondi" })
+    @IsString()
+    @IsNotEmpty()
     address: string;
+
+    @ApiProperty({ example: "09:00 AM" })
+    @IsString()
+    @IsNotEmpty()
     openTime: string;
+
+    @ApiProperty({ example: "08:00 PM" })
+    @IsString()
+    @IsNotEmpty()
     closeTime: string;
 }

@@ -16,6 +16,10 @@
 //   productBenefit String?
 //   productImage  String?
 
+import { ApiProperty } from "@nestjs/swagger";
+import { SupplementCategory } from "@prisma/client";
+import { IsNotEmpty, IsNumber, IsString } from "class-validator";
+
 //   affiliateProducts AffiliateProduct[]
 //   userTracking      UserSupplementTracking[]
 
@@ -23,10 +27,39 @@
 //   @@map("supplements")
 // }
 
-export class Suppliment{
-    name : string;
-    category : string;
-    productPrice : string;
-    vendorname : string;
+export class Suppliment {
+    @ApiProperty({ example: "Whey Protein Isolate" })
+    @IsString()
+    @IsNotEmpty()
+    name: string;
 
+    @ApiProperty({ enum: SupplementCategory, example: SupplementCategory.FOUNDATION })
+    @IsString()
+    @IsNotEmpty()
+    category: string;
+
+    @ApiProperty({ example: 2500 })
+    @IsNumber()
+    @IsNotEmpty()
+    productPrice: number;
+
+    @ApiProperty({ example: "HealthCare Nutrition Ltd." })
+    @IsString()
+    @IsNotEmpty()
+    vendorname: string;
+
+    @ApiProperty({ example: "Supports muscle growth and recovery after workout." })
+    @IsString()
+    @IsNotEmpty()
+    productBenefit: string;
+
+    @ApiProperty({ example: "https://example.com/images/whey-protein.jpg" })
+    @IsString()
+    @IsNotEmpty()
+    productImage: string;
+
+    @ApiProperty({ example: "https://example.com/products/whey-protein" })
+    @IsString()
+    @IsNotEmpty()
+    productpurchesUrl: string;
 }

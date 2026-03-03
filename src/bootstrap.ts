@@ -87,14 +87,15 @@ export async function bootstrap() {
 
   // CORS – mobile + web ready
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'capacitor://localhost',
-      'ionic://localhost',
-      'exp://*',
-      ...(config.get<string>('CORS_ORIGINS')?.split(',') || []),
-    ],
+    // origin: [
+    //   'http://localhost:3000',
+    //   'http://localhost:5173',
+    //   'capacitor://localhost',
+    //   'ionic://localhost',
+    //   'exp://*',
+    //   ...(config.get<string>('CORS_ORIGINS')?.split(',') || []),
+    // ],
+    origin : true,
     credentials: true,
   });
 
