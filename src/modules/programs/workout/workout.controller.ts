@@ -1,13 +1,33 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param,
-  Query, UseGuards, HttpCode, HttpStatus,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { WorkoutService } from './workout.service';
 import {
-  StartWorkoutDto, LogSetDto, BulkLogSetsDto, StartRestTimerDto,
-  CompleteWorkoutDto, WorkoutHistoryQueryDto,
-  UpdateSetLogDto, UpdateWorkoutLogDto,
+  StartWorkoutDto,
+  LogSetDto,
+  BulkLogSetsDto,
+  StartRestTimerDto,
+  CompleteWorkoutDto,
+  WorkoutHistoryQueryDto,
+  UpdateSetLogDto,
+  UpdateWorkoutLogDto,
 } from './dto/workout.dto';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
@@ -50,11 +70,19 @@ Useful for:
 Returns the same exercise shape as GET /today.
 workoutLogId is included if a log already exists for that day, null otherwise (that day hasn't been started yet).`,
   })
-  @ApiParam({ name: 'weekNumber', description: 'Week number (1-based, e.g. 1–10)', example: '2' })
-  @ApiParam({ name: 'dayNumber',  description: 'Day number within that week (1-based)', example: '1' })
+  @ApiParam({
+    name: 'weekNumber',
+    description: 'Week number (1-based, e.g. 1–10)',
+    example: '2',
+  })
+  @ApiParam({
+    name: 'dayNumber',
+    description: 'Day number within that week (1-based)',
+    example: '1',
+  })
   getWorkoutDay(
     @Param('weekNumber') weekNumber: string,
-    @Param('dayNumber')  dayNumber: string,
+    @Param('dayNumber') dayNumber: string,
     @CurrentUser() user: any,
   ) {
     return this.workoutService.getWorkoutDay(user.id, +weekNumber, +dayNumber);
@@ -85,7 +113,8 @@ The workoutLogId stays the same — no need to update cached IDs.`,
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Log a Set',
-    description: 'Idempotent — re-logging same setNumber/exerciseId updates the existing set.',
+    description:
+      'Idempotent — re-logging same setNumber/exerciseId updates the existing set.',
   })
   @ApiParam({ name: 'logId', description: 'WorkoutLog ID' })
   logSet(
@@ -100,7 +129,8 @@ The workoutLogId stays the same — no need to update cached IDs.`,
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Bulk Log Sets',
-    description: 'Log multiple sets in one request. Useful for logging all sets of an exercise at once.',
+    description:
+      'Log multiple sets in one request. Useful for logging all sets of an exercise at once.',
   })
   @ApiParam({ name: 'logId', description: 'WorkoutLog ID' })
   bulkLogSets(
@@ -122,10 +152,13 @@ The workoutLogId stays the same — no need to update cached IDs.`,
 Only allowed while workout is IN_PROGRESS.
 All fields optional — only send what changed.`,
   })
-  @ApiParam({ name: 'logId',    description: 'WorkoutLog ID' })
-  @ApiParam({ name: 'setLogId', description: 'WorkoutSetLog ID from logSet response' })
+  @ApiParam({ name: 'logId', description: 'WorkoutLog ID' })
+  @ApiParam({
+    name: 'setLogId',
+    description: 'WorkoutSetLog ID from logSet response',
+  })
   updateSetLog(
-    @Param('logId')    logId: string,
+    @Param('logId') logId: string,
     @Param('setLogId') setLogId: string,
     @Body() dto: UpdateSetLogDto,
     @CurrentUser() user: any,
@@ -145,10 +178,10 @@ All fields optional — only send what changed.`,
 Only allowed while workout is IN_PROGRESS.
 To re-log correctly, call POST /:logId/sets again.`,
   })
-  @ApiParam({ name: 'logId',    description: 'WorkoutLog ID' })
+  @ApiParam({ name: 'logId', description: 'WorkoutLog ID' })
   @ApiParam({ name: 'setLogId', description: 'WorkoutSetLog ID to delete' })
   deleteSetLog(
-    @Param('logId')    logId: string,
+    @Param('logId') logId: string,
     @Param('setLogId') setLogId: string,
     @CurrentUser() user: any,
   ) {
@@ -163,7 +196,8 @@ To re-log correctly, call POST /:logId/sets again.`,
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Start Rest Timer',
-    description: 'Stamps restStartedAt on a set log. Call PATCH /:logId/rest/:setLogId/end when rest is over.',
+    description:
+      'Stamps restStartedAt on a set log. Call PATCH /:logId/rest/:setLogId/end when rest is over.',
   })
   @ApiParam({ name: 'logId', description: 'WorkoutLog ID' })
   startRestTimer(
@@ -179,10 +213,10 @@ To re-log correctly, call POST /:logId/sets again.`,
     summary: 'End Rest Timer',
     description: 'Stamps restEndedAt. Duration = restEndedAt - restStartedAt.',
   })
-  @ApiParam({ name: 'logId',    description: 'WorkoutLog ID' })
+  @ApiParam({ name: 'logId', description: 'WorkoutLog ID' })
   @ApiParam({ name: 'setLogId', description: 'WorkoutSetLog ID' })
   endRestTimer(
-    @Param('logId')    logId: string,
+    @Param('logId') logId: string,
     @Param('setLogId') setLogId: string,
     @CurrentUser() user: any,
   ) {
@@ -216,7 +250,8 @@ To re-log correctly, call POST /:logId/sets again.`,
   @Patch(':logId/skip')
   @ApiOperation({
     summary: 'Skip Workout',
-    description: 'Marks workout SKIPPED and advances program to next day (same as completing without sets).',
+    description:
+      'Marks workout SKIPPED and advances program to next day (same as completing without sets).',
   })
   @ApiParam({ name: 'logId', description: 'WorkoutLog ID' })
   skipWorkout(@Param('logId') logId: string, @CurrentUser() user: any) {
@@ -230,7 +265,8 @@ To re-log correctly, call POST /:logId/sets again.`,
   @Patch(':logId/notes')
   @ApiOperation({
     summary: 'Edit Workout Notes',
-    description: 'Update notes on any workout log (PENDING, IN_PROGRESS, COMPLETED, or SKIPPED).',
+    description:
+      'Update notes on any workout log (PENDING, IN_PROGRESS, COMPLETED, or SKIPPED).',
   })
   @ApiParam({ name: 'logId', description: 'WorkoutLog ID' })
   updateWorkoutLog(
@@ -264,13 +300,19 @@ Use this to discard an accidentally started workout.`,
   // ═══════════════════════════════════════════════════════════════
 
   @Get('history')
-  @ApiOperation({ summary: 'Workout History', description: 'Returns COMPLETED and SKIPPED workout logs, newest first.' })
+  @ApiOperation({
+    summary: 'Workout History',
+    description: 'Returns COMPLETED and SKIPPED workout logs, newest first.',
+  })
   getHistory(@Query() query: WorkoutHistoryQueryDto, @CurrentUser() user: any) {
     return this.workoutService.getWorkoutHistory(user.id, query);
   }
 
   @Get(':logId')
-  @ApiOperation({ summary: 'Get Workout Log', description: 'Get a specific workout log with all sessions and set data.' })
+  @ApiOperation({
+    summary: 'Get Workout Log',
+    description: 'Get a specific workout log with all sessions and set data.',
+  })
   @ApiParam({ name: 'logId', description: 'WorkoutLog ID' })
   getLog(@Param('logId') logId: string, @CurrentUser() user: any) {
     return this.workoutService.getWorkoutLog(user.id, logId);
@@ -291,7 +333,6 @@ Use this to discard an accidentally started workout.`,
 // } from './dto/workout.dto';
 // import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 // import { CurrentUser } from 'src/common/decorators/current-user.decorator';
-
 
 // @ApiTags(' User — Workout')
 // @ApiBearerAuth('JWT-auth')
