@@ -18,7 +18,8 @@ import { ExecutionNoteModule } from './modules/content-management/execution-note
 import { ResearchAndEducationModule } from './modules/content-management/research-and-educaion/research-and-educaion.module';
 import { PartnerClinicModule } from './modules/content-management/partner-clinic/partner-clinic.module';
 import { EssentialContentModule } from './modules/content-management/essential-content/essential-content.module';
-import { SupplimentModule } from './modules/content-management/suppliment/suppliment.module';
+import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
+import { SupplimentProductModule } from './modules/content-management/suppliment-product/suppliment-product.module';
 
 @Module({
   imports: [
@@ -48,7 +49,8 @@ import { SupplimentModule } from './modules/content-management/suppliment/suppli
     ResearchAndEducationModule,
     PartnerClinicModule,
     EssentialContentModule,
-    SupplimentModule
+    CloudinaryModule,
+    SupplimentProductModule
   ],
   providers: [
 
@@ -56,13 +58,6 @@ import { SupplimentModule } from './modules/content-management/suppliment/suppli
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
-    // JWT Auth guard (global - all routes require auth by default)
-    // Comment out if you want some public routes
-    // {
-    //   provide: APP_GUARD,
-    //   useClass: JwtAuthGuard,
-    // },
-    // Global validation pipe
     {
       provide: APP_PIPE,
       useClass: ValidationPipe,
