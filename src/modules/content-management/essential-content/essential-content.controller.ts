@@ -17,7 +17,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 
-@ApiTags('Essential Content')
+@ApiTags('Safety Disclaimer')
 @Controller('essential-content')
 export class EssentialContentController {
   constructor(
