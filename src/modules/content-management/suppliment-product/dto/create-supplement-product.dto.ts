@@ -1,30 +1,35 @@
 
-import { IsString, IsEnum, IsNumber, IsOptional, IsArray, IsUrl, IsNotEmpty } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsString, IsEnum, IsNumber, IsOptional, IsArray, IsUrl, IsNotEmpty, ArrayNotEmpty } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { SupplementCategory } from '@prisma/client';
 
 export class CreateSupplementProductDto {
 
-  @IsString()
-  @IsNotEmpty()
-  name: string;
+    @IsString()
+    @IsNotEmpty()
+    name: string;
 
-  @IsEnum(SupplementCategory)
-  category: SupplementCategory;
+    @IsEnum(SupplementCategory)
+    category: SupplementCategory;
 
-  @IsNumber()
-  @Type(() => Number)
-  price: number;
+    @IsNumber()
+    @Type(() => Number)
+    price: number;
 
-  @IsOptional()
-  @IsString()
-  vendorName?: string;
+    @IsOptional()
+    @IsString()
+    vendorName?: string;
 
-  @IsUrl()
-  purchasePageUrl: string;
+    @IsUrl()
+    purchasePageUrl: string;
 
-  @IsArray()
-  @IsString({ each: true })
-  @IsOptional()
-  benefits?: string[];
+    @Transform(({ value }) => {
+        if (Array.isArray(value)) return value;
+        if (typeof value === 'string') return [value];
+        return [];
+    })
+    @IsArray()
+    @ArrayNotEmpty()
+    @IsString({ each: true })
+    benefits?: string[];
 }
