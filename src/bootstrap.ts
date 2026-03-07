@@ -61,6 +61,9 @@ export async function bootstrap() {
   process.on('SIGTERM', shutdown);
 
   // ────── SECURITY & PERFORMANCE ──────
+  app.enableCors({
+    origin: "*",
+  });
   app.use(helmet());
   app.use(compression());
   app.use(cookieParser());
