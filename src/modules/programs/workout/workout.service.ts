@@ -622,6 +622,9 @@ export class WorkoutService {
       return;
     }
 
+
+    
+
     const last = new Date(user.lastActiveDate);
     last.setHours(0, 0, 0, 0);
     const diffDays = Math.round((today.getTime() - last.getTime()) / 86400000);
@@ -633,3 +636,4 @@ export class WorkoutService {
     await tx.user.update({ where: { id: userId }, data: { streakDays: newStreak } });
   }
 }
+
