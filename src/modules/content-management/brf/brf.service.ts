@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateBrfDto } from './dto/create.brf.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { BFRBodyType, BFRContentCategory, BFRSessionCategory } from '@prisma/client';
+import { BFRBodyType, BFRSessionCategory } from '@prisma/client';
 import { UpdateBrfDto } from './dto/update.bfr.dto';
 
 @Injectable()
@@ -28,7 +28,7 @@ export class BrfService {
 
         return result
 
-    }
+    };
 
     async allBfrList(sessionCategory: BFRSessionCategory) {
 
@@ -42,7 +42,7 @@ export class BrfService {
             where: filter
         });
         return result;
-    }
+    };
 
     async SingleBfrList(bfrId: string) {
         const result = await this.prisma.bFRContent.findUnique({
@@ -55,13 +55,13 @@ export class BrfService {
 
         return result;
 
-    }
+    };
 
     async deleteBfr(brfId: string) {
         const find = await this.prisma.bFRContent.findUnique({ where: { id: brfId } });
         if (!find) throw new NotFoundException("Bfr not found");
         await this.prisma.bFRContent.delete({ where: { id: brfId } });
-    }
+    };
 
     async updateBfr(bfrid: string, data: UpdateBrfDto) {
         const find = await this.prisma.bFRContent.findUnique({ where: { id: bfrid } });
@@ -82,6 +82,5 @@ export class BrfService {
         });
         if (!update) throw new NotFoundException("Bfr not updated");
         return update;
-    }
-
+    };
 }
