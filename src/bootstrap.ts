@@ -1,10 +1,9 @@
 // src/bootstrap.ts
+
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger, VersioningType } from '@nestjs/common';
 import { AppModule } from './app.module';
-
-// Swagger imports
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -16,15 +15,13 @@ import { Server } from 'http';
 import { PrismaService } from './prisma/prisma.service';
 import { networkInterfaces } from 'os';
 
-// ────── HELPER FUNCTIONS ──────
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
 function getLocalIp(): string {
   const nets = networkInterfaces();
   for (const name of Object.keys(nets)) {
     for (const net of nets[name] || []) {
-      // Skip internal (127.0.0.1) and non-IPv4
-      if (net.family === 'IPv4' && !net.internal) {
-        return net.address;
-      }
+      if (net.family === 'IPv4' && !net.internal) return net.address;
     }
   }
   return 'localhost';
@@ -32,13 +29,10 @@ function getLocalIp(): string {
 
 const PORT_CANDIDATES = [
   Number(process.env.PORT) || 3000,
-  3001,
-  3002,
-  3007,
-  5000,
-  8080,
-  8000,
+  3001, 3002, 3007, 5000, 8080, 8000,
 ];
+
+// ─── bootstrap ───────────────────────────────────────────────────────────────
 
 export async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -46,94 +40,144 @@ export async function bootstrap() {
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
   });
 
-  const config = app.get(ConfigService);
-  const prisma = app.get(PrismaService);
-  const reflector = app.get(Reflector); // unused for now — safe to keep
+  const config  = app.get(ConfigService);
+  const prisma  = app.get(PrismaService);
+  const reflector = app.get(Reflector); // kept for future guards
 
-  // ────── GRACEFUL SHUTDOWN ──────
+  // ── graceful shutdown ─────────────────────────────────────────────────────
   const shutdown = async () => {
     await prisma.$disconnect();
     await app.close();
     process.exit(0);
   };
-
-  process.on('SIGINT', shutdown);
+  process.on('SIGINT',  shutdown);
   process.on('SIGTERM', shutdown);
 
-  // ────── SECURITY & PERFORMANCE ──────
-  app.enableCors({
-    origin: "*",
-  });
-  app.use(helmet());
-  app.use(compression());
-  app.use(cookieParser());
+  // ── global prefix + versioning (must come BEFORE Swagger setup) ───────────
+  app.setGlobalPrefix('api');
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
+  // ── environment ───────────────────────────────────────────────────────────
   const isProduction = process.env.NODE_ENV === 'production';
 
-  // Base URL = root of the API (without /api or /docs)
-  const baseUrl = isProduction
-    ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME}`
+  // On Render, RENDER_EXTERNAL_HOSTNAME = "husss-be.onrender.com" (no protocol, no trailing slash)
+  const productionHost = process.env.RENDER_EXTERNAL_HOSTNAME ?? '';
+  const baseUrl = isProduction && productionHost
+    ? `https://${productionHost}`
     : `http://localhost:${PORT_CANDIDATES[0]}`;
 
-  // ────── SWAGGER DOCUMENTATION ──────
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Zenith API')
-    .setDescription('The Zenith API description')
-    .setVersion('1.0')
-    .addServer(
-      `${baseUrl}/api/v1`,
-      isProduction ? 'Production Server' : 'Local Development Server',
-    )
-    // Optional: explicit local fallback (only shown in dev)
-    .addServer(
-      `http://localhost:${PORT_CANDIDATES[0]}/api/v1`,
-      'Local (dev only)',
-    )
-    .addTag('tasks', 'Operations related to user tasks')
-    .addTag('auth', 'User authentication and sessions')
-    .addBearerAuth()
-    .build();
+  const extraOrigins = config
+    .get<string>('CORS_ORIGINS', '')
+    ?.split(',')
+    .map((o) => o.trim())
+    .filter(Boolean) ?? [];
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+  const allowedOrigins = [
+    // Local dev
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:4200',
+    // Mobile
+    'capacitor://localhost',
+    'ionic://localhost',
+    // Expo
+    /^exp:\/\/.*/,
+    // Production — allow Render-hosted Swagger UI and your app
+    ...(isProduction && productionHost
+      ? [`https://${productionHost}`]
+      : []),
+    // Extra origins from env
+    ...extraOrigins,
+  ];
 
-  // ────── CORS ──────
   app.enableCors({
     origin: (origin, callback) => {
-      const allowedOrigins = [
-        'http://localhost:3000',
-        'http://localhost:5173',
-        'capacitor://localhost',
-        'ionic://localhost',
-        'exp://*',
-        ...(config
-          .get<string>('CORS_ORIGINS')
-          ?.split(',')
-          .map((o) => o.trim()) || []),
-      ];
+      // Allow requests with no origin (mobile apps, curl, Postman)
+      if (!origin) return callback(null, true);
 
-      if (!origin || allowedOrigins.includes(origin)) {
+      const allowed = allowedOrigins.some((o) =>
+        o instanceof RegExp ? o.test(origin) : o === origin,
+      );
+
+      if (allowed) {
         callback(null, true);
       } else {
-        callback(new Error('Not allowed by CORS'));
+        Logger.warn(`CORS blocked: ${origin}`, 'CORS');
+        callback(new Error(`Origin "${origin}" not allowed by CORS`));
       }
     },
     credentials: true,
+    methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
 
-  // ────── GLOBAL PREFIX + VERSIONING ──────
-  app.setGlobalPrefix('api');
-  app.enableVersioning({
-    type: VersioningType.URI,
-    defaultVersion: '1',
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: isProduction
+        ? {
+            directives: {
+              defaultSrc:  ["'self'"],
+              scriptSrc:   ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'],  // Swagger UI needs these
+              styleSrc:    ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'],
+              imgSrc:      ["'self'", 'data:', 'cdn.jsdelivr.net'],
+              connectSrc:  ["'self'", baseUrl],  // allow Swagger UI → API calls
+              fontSrc:     ["'self'", 'cdn.jsdelivr.net'],
+              objectSrc:   ["'none'"],
+              upgradeInsecureRequests: [],
+            },
+          }
+        : false, // CSP off in dev — no friction
+      crossOriginEmbedderPolicy: false,  // required for Swagger UI iframes
+    }),
+  );
+
+  app.use(compression());
+  app.use(cookieParser());
+
+  // ── Swagger docs ──────────────────────────────────────────────────────────
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Zenith API')
+    .setDescription('Zenith backend REST API')
+    .setVersion('1.0')
+    // Primary server — what Swagger UI will send requests to
+    .addServer(
+      `${baseUrl}/api/v1`,
+      isProduction ? 'Production (Render)' : 'Local Development',
+    )
+    // Always show local as a secondary option (useful when testing from localhost)
+    .addServer(
+      `http://localhost:${PORT_CANDIDATES[0]}/api/v1`,
+      'Local fallback',
+    )
+    .addTag('auth',    'Authentication & sessions')
+    .addTag('tasks',   'User tasks')
+    .addBearerAuth(
+      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', name: 'JWT-auth' },
+      'JWT-auth',
+    )
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+
+  // Mount at /docs — note: NO "api" prefix here because SwaggerModule.setup
+  // registers its own routes outside the global prefix
+  SwaggerModule.setup('docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,          // keeps JWT across page reloads
+      displayRequestDuration: true,
+      tryItOutEnabled: true,               // "Try it out" enabled by default
+      filter: true,                        // search box in Swagger UI
+    },
+    customSiteTitle: 'Zenith API Docs',
   });
 
-  // ────── GLOBAL PIPES, FILTERS, INTERCEPTORS ──────
+  // ── global pipes / filters / interceptors ─────────────────────────────────
   app.useGlobalPipes(new ValidationPipe());
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new TransformInterceptor());
 
-  // ────── AUTO PORT BINDING ──────
+  // ── port binding ──────────────────────────────────────────────────────────
   let httpServer: Server | null = null;
   let selectedPort = PORT_CANDIDATES[0];
 
@@ -141,7 +185,6 @@ export async function bootstrap() {
     try {
       httpServer = await app.listen(port, '0.0.0.0');
       selectedPort = port;
-      Logger.log(`API running on port ${port}`, 'Bootstrap');
       break;
     } catch (err: any) {
       if (err.code !== 'EADDRINUSE') throw err;
@@ -149,25 +192,22 @@ export async function bootstrap() {
     }
   }
 
-  if (!httpServer) {
-    throw new Error('No available port found!');
-  }
+  if (!httpServer) throw new Error('No available port found!');
 
-  // Get real bound address/port
-  const address = httpServer.address();
-  const realPort =
-    typeof address === 'string' ? selectedPort : (address?.port ?? selectedPort);
-
+  const address  = httpServer.address();
+  const realPort = typeof address === 'string' ? selectedPort : (address?.port ?? selectedPort);
   const localUrl = `http://localhost:${realPort}`;
   const networkUrl = `http://${getLocalIp()}:${realPort}`;
-  const docsUrl = `${baseUrl}/docs`;
+  const docsUrl  = isProduction ? `${baseUrl}/docs` : `${localUrl}/docs`;
 
-  // ────── FINAL LOGS ──────
-  Logger.log('Zenith API READY', 'Bootstrap');
+  Logger.log('checking the boostrap', 'Bootstrap');
+  Logger.log('Zenith API  READY', 'Bootstrap');
   Logger.log(`Local:      ${localUrl}/api/v1`, 'Bootstrap');
   Logger.log(`Network:    ${networkUrl}/api/v1`, 'Bootstrap');
   Logger.log(`Health:     ${localUrl}/api/v1/health`, 'Bootstrap');
-  Logger.log(`📚 Docs:     ${docsUrl}`, 'Bootstrap');
+  Logger.log(`Docs:       ${docsUrl}`, 'Bootstrap');
+  Logger.log(`Env:        ${isProduction ? 'production' : 'development'}`, 'Bootstrap');
+  Logger.log('checking the boostrap', 'Bootstrap');
 
   return { app, httpServer };
 }
