@@ -147,7 +147,7 @@ export async function bootstrap() {
     )
     // Always show local as a secondary option (useful when testing from localhost)
     .addServer(
-      `http://localhost:${PORT_CANDIDATES[0]}/api/v1`,
+      `http://localhost:${PORT_CANDIDATES[0]}`,
       'Local fallback',
     )
     .addTag('auth',    'Authentication & sessions')
