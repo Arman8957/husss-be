@@ -1,4 +1,4 @@
-
+// src/bootstrap.ts
 
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
@@ -49,35 +49,43 @@ export async function bootstrap() {
   process.on('SIGINT',  shutdown);
   process.on('SIGTERM', shutdown);
 
-  // ── global prefix + versioning ────────────────────────────────────────────
-  // These make every route /api/v1/...
-  // The OpenAPI spec paths will already contain /api/v1/...
-  // So addServer() below must be BARE HOST ONLY — no /api/v1 suffix.
-  app.setGlobalPrefix('api');
-  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+  // ── resolve production host ───────────────────────────────────────────────
+  //
+  // FIX: RENDER_EXTERNAL_HOSTNAME must be the raw hostname only:
+  //   ✓  husss-be.onrender.com          (correct — Render sets it this way automatically)
+  //   ✗  https://husss-be.onrender.com  (wrong — your .env had this; strip the protocol)
+  //
+  // In your .env use: RENDER_EXTERNAL_HOSTNAME=husss-be.onrender.com  (no https://)
+  // On Render dashboard, the env var is set automatically without protocol.
+  //
+  let renderHostname = process.env.RENDER_EXTERNAL_HOSTNAME ?? '';
+  // Strip protocol prefix if someone accidentally added it in .env
+  renderHostname = renderHostname.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
-  // ── resolve host ──────────────────────────────────────────────────────────
-  // Detection order:
-  //   1. RENDER_EXTERNAL_HOSTNAME env var (set automatically by Render)
-  //   2. NODE_ENV === 'production' fallback to hardcoded Render URL
-  //   3. localhost for dev
-  const renderHostname =
-    process.env.RENDER_EXTERNAL_HOSTNAME ||           // e.g. husss-be.onrender.com
-    (process.env.NODE_ENV === 'production'
-      ? 'husss-be.onrender.com'                       // hardcoded safety net
-      : '');
+  // Use NODE_ENV=production as the authoritative production signal (set this on Render)
+  const isProduction = process.env.NODE_ENV === 'production';
 
-  const isProduction = !!renderHostname && renderHostname !== '';
+  // If running on Render but RENDER_EXTERNAL_HOSTNAME isn't set, fall back to hardcoded
+  const hostname = renderHostname || (isProduction ? 'husss-be.onrender.com' : '');
 
-  // bareHost = scheme + host ONLY — NO trailing slash, NO /api, NO /v1
-  // Correct:   https://husss-be.onrender.com
-  // Wrong:     https://husss-be.onrender.com/api/v1   ← causes double prefix
-  const bareHost = isProduction
-    ? `https://${renderHostname}`
+  // ── swagger server URL ────────────────────────────────────────────────────
+  //
+  // CRITICAL — must be scheme+host ONLY, NO path suffix:
+  //
+  //   NestJS setGlobalPrefix('api') + enableVersioning(URI,'1')
+  //   → every OpenAPI spec path = /api/v1/auth/login
+  //
+  //   Swagger UI final URL = swaggerServer + specPath
+  //
+  //   ✓  https://husss-be.onrender.com  +  /api/v1/auth/login  =  correct
+  //   ✗  https://husss-be.onrender.com/api/v1  +  /api/v1/auth/login  =  DOUBLE PREFIX
+  //
+  const swaggerServer = isProduction && hostname
+    ? `https://${hostname}`
     : `http://localhost:${PORT_CANDIDATES[0]}`;
 
-  Logger.log(`bareHost = ${bareHost}`, 'Bootstrap');
-  Logger.log(`isProduction = ${isProduction}`, 'Bootstrap');
+  Logger.log(`swaggerServer = ${swaggerServer}`, 'Bootstrap');
+  Logger.log(`isProduction  = ${isProduction}`, 'Bootstrap');
 
   // ── CORS ──────────────────────────────────────────────────────────────────
   const extraOrigins = config
@@ -91,25 +99,22 @@ export async function bootstrap() {
     'capacitor://localhost',
     'ionic://localhost',
     /^exp:\/\/.*/,
-    ...(isProduction ? [`https://${renderHostname}`] : []),
+    ...(isProduction && hostname ? [`https://${hostname}`] : []),
     ...extraOrigins,
   ];
 
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // Postman / mobile / curl
+      if (!origin) return callback(null, true);
       const allowed = allowedOrigins.some((o) =>
         o instanceof RegExp ? o.test(origin) : o === origin,
       );
-      if (allowed) {
-        callback(null, true);
-      } else {
-        Logger.warn(`CORS blocked: ${origin}`, 'CORS');
-        callback(new Error(`Origin "${origin}" not allowed by CORS`));
-      }
+      allowed
+        ? callback(null, true)
+        : callback(new Error(`Origin "${origin}" not allowed by CORS`));
     },
-    credentials: true,
-    methods:      ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    credentials:    true,
+    methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
 
@@ -123,7 +128,7 @@ export async function bootstrap() {
               scriptSrc:   ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'],
               styleSrc:    ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'],
               imgSrc:      ["'self'", 'data:', 'cdn.jsdelivr.net'],
-              connectSrc:  ["'self'", bareHost],
+              connectSrc:  ["'self'", swaggerServer],
               fontSrc:     ["'self'", 'cdn.jsdelivr.net'],
               objectSrc:   ["'none'"],
               upgradeInsecureRequests: [],
@@ -137,26 +142,16 @@ export async function bootstrap() {
   app.use(compression());
   app.use(cookieParser());
 
+  // ── global prefix + versioning ────────────────────────────────────────────
+  app.setGlobalPrefix('api');
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+
   // ── Swagger ───────────────────────────────────────────────────────────────
-  //
-  // HOW THIS WORKS:
-  //   setGlobalPrefix('api') + enableVersioning(URI, '1')
-  //   → every route in the OpenAPI spec has path: /api/v1/auth/login
-  //
-  //   addServer(bareHost) → Swagger UI builds:
-  //   bareHost + path = https://husss-be.onrender.com + /api/v1/auth/login
-  //                   = https://husss-be.onrender.com/api/v1/auth/login  ✓
-  //
-  //   addServer(bareHost + '/api/v1') → Swagger UI builds:
-  //   bareHost/api/v1 + /api/v1/auth/login
-  //                   = https://husss-be.onrender.com/api/v1/api/v1/auth/login  ✗ DOUBLE
-  //
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Zenith API')
     .setDescription('Zenith backend REST API')
     .setVersion('1.0')
-    // ↓ BARE HOST ONLY — routes already carry /api/v1 from NestJS prefix+versioning
-    .addServer(bareHost, isProduction ? 'Production (Render)' : 'Local Development')
+    .addServer(swaggerServer, isProduction ? 'Production (Render)' : 'Local Development')
     .addTag('auth',    'Authentication & sessions')
     .addTag('tasks',   'User tasks')
     .addBearerAuth(
@@ -169,10 +164,10 @@ export async function bootstrap() {
 
   SwaggerModule.setup('docs', app, document, {
     swaggerOptions: {
-      persistAuthorization: true,
-      displayRequestDuration: true,
-      tryItOutEnabled: true,
-      filter: true,
+      persistAuthorization:    true,
+      displayRequestDuration:  true,
+      tryItOutEnabled:         true,
+      filter:                  true,
     },
     customSiteTitle: 'Zenith API Docs',
   });
@@ -202,15 +197,15 @@ export async function bootstrap() {
   const address  = httpServer.address();
   const realPort = typeof address === 'string' ? selectedPort : (address?.port ?? selectedPort);
   const localUrl = `http://localhost:${realPort}`;
-  const docsUrl  = isProduction ? `${bareHost}/docs` : `${localUrl}/docs`;
+  const docsUrl  = isProduction && hostname ? `https://${hostname}/docs` : `${localUrl}/docs`;
 
-  Logger.log('──────────────────────────────────────────', 'Bootstrap');
-  Logger.log(`Zenith API READY`, 'Bootstrap');
+  Logger.log('──────────────────────────────────────', 'Bootstrap');
+  Logger.log('Zenith API READY', 'Bootstrap');
   Logger.log(`Local:   ${localUrl}/api/v1`, 'Bootstrap');
   Logger.log(`Network: http://${getLocalIp()}:${realPort}/api/v1`, 'Bootstrap');
   Logger.log(`Docs:    ${docsUrl}`, 'Bootstrap');
-  Logger.log(`Env:     ${isProduction ? 'production → ' + bareHost : 'development'}`, 'Bootstrap');
-  Logger.log('──────────────────────────────────────────', 'Bootstrap');
+  Logger.log(`Server:  ${swaggerServer}`, 'Bootstrap');
+  Logger.log('──────────────────────────────────────', 'Bootstrap');
 
   return { app, httpServer };
 }
