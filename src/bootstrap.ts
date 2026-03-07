@@ -1,4 +1,4 @@
-// src/bootstrap.ts
+
 
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
@@ -15,8 +15,6 @@ import { Server } from 'http';
 import { PrismaService } from './prisma/prisma.service';
 import { networkInterfaces } from 'os';
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
 function getLocalIp(): string {
   const nets = networkInterfaces();
   for (const name of Object.keys(nets)) {
@@ -32,8 +30,6 @@ const PORT_CANDIDATES = [
   3001, 3002, 3007, 5000, 8080, 8000,
 ];
 
-// ─── bootstrap ───────────────────────────────────────────────────────────────
-
 export async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
@@ -42,7 +38,7 @@ export async function bootstrap() {
 
   const config  = app.get(ConfigService);
   const prisma  = app.get(PrismaService);
-  const reflector = app.get(Reflector); // kept for future guards
+  const reflector = app.get(Reflector);
 
   // ── graceful shutdown ─────────────────────────────────────────────────────
   const shutdown = async () => {
@@ -53,56 +49,58 @@ export async function bootstrap() {
   process.on('SIGINT',  shutdown);
   process.on('SIGTERM', shutdown);
 
-  // ── global prefix + versioning (must come BEFORE Swagger setup) ───────────
+  // ── global prefix + versioning ────────────────────────────────────────────
+  // These make every route /api/v1/...
+  // The OpenAPI spec paths will already contain /api/v1/...
+  // So addServer() below must be BARE HOST ONLY — no /api/v1 suffix.
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
-  // ── environment ───────────────────────────────────────────────────────────
-  const isProduction = process.env.NODE_ENV === 'production';
+  // ── resolve host ──────────────────────────────────────────────────────────
+  // Detection order:
+  //   1. RENDER_EXTERNAL_HOSTNAME env var (set automatically by Render)
+  //   2. NODE_ENV === 'production' fallback to hardcoded Render URL
+  //   3. localhost for dev
+  const renderHostname =
+    process.env.RENDER_EXTERNAL_HOSTNAME ||           // e.g. husss-be.onrender.com
+    (process.env.NODE_ENV === 'production'
+      ? 'husss-be.onrender.com'                       // hardcoded safety net
+      : '');
 
-  // On Render, RENDER_EXTERNAL_HOSTNAME = "husss-be.onrender.com" (no protocol, no trailing slash)
-  const productionHost = process.env.RENDER_EXTERNAL_HOSTNAME ?? '';
-  const baseUrl = isProduction && productionHost
-    ? `https://${productionHost}`
+  const isProduction = !!renderHostname && renderHostname !== '';
+
+  // bareHost = scheme + host ONLY — NO trailing slash, NO /api, NO /v1
+  // Correct:   https://husss-be.onrender.com
+  // Wrong:     https://husss-be.onrender.com/api/v1   ← causes double prefix
+  const bareHost = isProduction
+    ? `https://${renderHostname}`
     : `http://localhost:${PORT_CANDIDATES[0]}`;
 
+  Logger.log(`bareHost = ${bareHost}`, 'Bootstrap');
+  Logger.log(`isProduction = ${isProduction}`, 'Bootstrap');
+
   // ── CORS ──────────────────────────────────────────────────────────────────
-  // Single call — list every allowed origin here.
-  // Swagger UI (hosted on Render) makes requests from the same origin so
-  // it's always allowed. Add your mobile / web client origins below.
   const extraOrigins = config
     .get<string>('CORS_ORIGINS', '')
-    ?.split(',')
-    .map((o) => o.trim())
-    .filter(Boolean) ?? [];
+    ?.split(',').map((o) => o.trim()).filter(Boolean) ?? [];
 
-  const allowedOrigins = [
-    // Local dev
+  const allowedOrigins: (string | RegExp)[] = [
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:4200',
-    // Mobile
     'capacitor://localhost',
     'ionic://localhost',
-    // Expo
     /^exp:\/\/.*/,
-    // Production — allow Render-hosted Swagger UI and your app
-    ...(isProduction && productionHost
-      ? [`https://${productionHost}`]
-      : []),
-    // Extra origins from env
+    ...(isProduction ? [`https://${renderHostname}`] : []),
     ...extraOrigins,
   ];
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, Postman)
-      if (!origin) return callback(null, true);
-
+      if (!origin) return callback(null, true); // Postman / mobile / curl
       const allowed = allowedOrigins.some((o) =>
         o instanceof RegExp ? o.test(origin) : o === origin,
       );
-
       if (allowed) {
         callback(null, true);
       } else {
@@ -111,51 +109,54 @@ export async function bootstrap() {
       }
     },
     credentials: true,
-    methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods:      ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
 
-  // ── security middleware ───────────────────────────────────────────────────
-  // helmet() by default sets a strict CSP that breaks Swagger UI.
-  // We relax it for the /docs route OR disable CSP entirely in dev.
+  // ── helmet ────────────────────────────────────────────────────────────────
   app.use(
     helmet({
       contentSecurityPolicy: isProduction
         ? {
             directives: {
               defaultSrc:  ["'self'"],
-              scriptSrc:   ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'],  // Swagger UI needs these
+              scriptSrc:   ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'],
               styleSrc:    ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'],
               imgSrc:      ["'self'", 'data:', 'cdn.jsdelivr.net'],
-              connectSrc:  ["'self'", baseUrl],  // allow Swagger UI → API calls
+              connectSrc:  ["'self'", bareHost],
               fontSrc:     ["'self'", 'cdn.jsdelivr.net'],
               objectSrc:   ["'none'"],
               upgradeInsecureRequests: [],
             },
           }
-        : false, // CSP off in dev — no friction
-      crossOriginEmbedderPolicy: false,  // required for Swagger UI iframes
+        : false,
+      crossOriginEmbedderPolicy: false,
     }),
   );
 
   app.use(compression());
   app.use(cookieParser());
 
-  // ── Swagger docs ──────────────────────────────────────────────────────────
-  // IMPORTANT: addServer URL must match exactly what the browser will call.
-  // In production that is https://husss-be.onrender.com/api/v1
-  // In dev that is http://localhost:3000/api/v1
-  // Do NOT add a second localhost server here — when deployed, Swagger UI picks
-  // the first server in the list. A stale localhost entry makes every "Try it out"
-  // call go to localhost instead of Render.
+  // ── Swagger ───────────────────────────────────────────────────────────────
+  //
+  // HOW THIS WORKS:
+  //   setGlobalPrefix('api') + enableVersioning(URI, '1')
+  //   → every route in the OpenAPI spec has path: /api/v1/auth/login
+  //
+  //   addServer(bareHost) → Swagger UI builds:
+  //   bareHost + path = https://husss-be.onrender.com + /api/v1/auth/login
+  //                   = https://husss-be.onrender.com/api/v1/auth/login  ✓
+  //
+  //   addServer(bareHost + '/api/v1') → Swagger UI builds:
+  //   bareHost/api/v1 + /api/v1/auth/login
+  //                   = https://husss-be.onrender.com/api/v1/api/v1/auth/login  ✗ DOUBLE
+  //
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Zenith API')
     .setDescription('Zenith backend REST API')
     .setVersion('1.0')
-    .addServer(
-      `${baseUrl}/api/v1`,
-      isProduction ? 'Production — https://husss-be.onrender.com' : 'Local Development',
-    )
+    // ↓ BARE HOST ONLY — routes already carry /api/v1 from NestJS prefix+versioning
+    .addServer(bareHost, isProduction ? 'Production (Render)' : 'Local Development')
     .addTag('auth',    'Authentication & sessions')
     .addTag('tasks',   'User tasks')
     .addBearerAuth(
@@ -166,14 +167,12 @@ export async function bootstrap() {
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
 
-  // Mount at /docs — note: NO "api" prefix here because SwaggerModule.setup
-  // registers its own routes outside the global prefix
   SwaggerModule.setup('docs', app, document, {
     swaggerOptions: {
-      persistAuthorization: true,          // keeps JWT across page reloads
+      persistAuthorization: true,
       displayRequestDuration: true,
-      tryItOutEnabled: true,               // "Try it out" enabled by default
-      filter: true,                        // search box in Swagger UI
+      tryItOutEnabled: true,
+      filter: true,
     },
     customSiteTitle: 'Zenith API Docs',
   });
@@ -203,17 +202,15 @@ export async function bootstrap() {
   const address  = httpServer.address();
   const realPort = typeof address === 'string' ? selectedPort : (address?.port ?? selectedPort);
   const localUrl = `http://localhost:${realPort}`;
-  const networkUrl = `http://${getLocalIp()}:${realPort}`;
-  const docsUrl  = isProduction ? `${baseUrl}/docs` : `${localUrl}/docs`;
+  const docsUrl  = isProduction ? `${bareHost}/docs` : `${localUrl}/docs`;
 
-  Logger.log('──────────────────────────────────', 'Bootstrap');
-  Logger.log('Zenith API  READY', 'Bootstrap');
-  Logger.log(`Local:      ${localUrl}/api/v1`, 'Bootstrap');
-  Logger.log(`Network:    ${networkUrl}/api/v1`, 'Bootstrap');
-  Logger.log(`Health:     ${localUrl}/api/v1/health`, 'Bootstrap');
-  Logger.log(`Docs:       ${docsUrl}`, 'Bootstrap');
-  Logger.log(`Env:        ${isProduction ? 'production' : 'development'}`, 'Bootstrap');
-  Logger.log('──────────────────────────────────', 'Bootstrap');
+  Logger.log('──────────────────────────────────────────', 'Bootstrap');
+  Logger.log(`Zenith API READY`, 'Bootstrap');
+  Logger.log(`Local:   ${localUrl}/api/v1`, 'Bootstrap');
+  Logger.log(`Network: http://${getLocalIp()}:${realPort}/api/v1`, 'Bootstrap');
+  Logger.log(`Docs:    ${docsUrl}`, 'Bootstrap');
+  Logger.log(`Env:     ${isProduction ? 'production → ' + bareHost : 'development'}`, 'Bootstrap');
+  Logger.log('──────────────────────────────────────────', 'Bootstrap');
 
   return { app, httpServer };
 }
