@@ -29,7 +29,12 @@ function getLocalIp(): string {
 
 const PORT_CANDIDATES = [
   Number(process.env.PORT) || 3000,
-  3001, 3002, 3007, 5000, 8080, 8000,
+  3001,
+  3002,
+  3007,
+  5000,
+  8080,
+  8000,
 ];
 
 // ─── bootstrap ───────────────────────────────────────────────────────────────
@@ -40,8 +45,8 @@ export async function bootstrap() {
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
   });
 
-  const config  = app.get(ConfigService);
-  const prisma  = app.get(PrismaService);
+  const config = app.get(ConfigService);
+  const prisma = app.get(PrismaService);
   const reflector = app.get(Reflector); // kept for future guards
 
   // ── graceful shutdown ─────────────────────────────────────────────────────
@@ -50,7 +55,7 @@ export async function bootstrap() {
     await app.close();
     process.exit(0);
   };
-  process.on('SIGINT',  shutdown);
+  process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
   // ── global prefix + versioning (must come BEFORE Swagger setup) ───────────
@@ -62,15 +67,17 @@ export async function bootstrap() {
 
   // On Render, RENDER_EXTERNAL_HOSTNAME = "husss-be.onrender.com" (no protocol, no trailing slash)
   const productionHost = process.env.RENDER_EXTERNAL_HOSTNAME ?? '';
-  const baseUrl = isProduction && productionHost
-    ? `https://${productionHost}`
-    : `http://localhost:${PORT_CANDIDATES[0]}`;
+  const baseUrl =
+    isProduction && productionHost
+      ? `https://${productionHost}`
+      : `http://localhost:${PORT_CANDIDATES[0]}`;
 
-  const extraOrigins = config
-    .get<string>('CORS_ORIGINS', '')
-    ?.split(',')
-    .map((o) => o.trim())
-    .filter(Boolean) ?? [];
+  const extraOrigins =
+    config
+      .get<string>('CORS_ORIGINS', '')
+      ?.split(',')
+      .map((o) => o.trim())
+      .filter(Boolean) ?? [];
 
   const allowedOrigins = [
     // Local dev
@@ -83,9 +90,7 @@ export async function bootstrap() {
     // Expo
     /^exp:\/\/.*/,
     // Production — allow Render-hosted Swagger UI and your app
-    ...(isProduction && productionHost
-      ? [`https://${productionHost}`]
-      : []),
+    ...(isProduction && productionHost ? [`https://${productionHost}`] : []),
     // Extra origins from env
     ...extraOrigins,
   ];
@@ -107,28 +112,27 @@ export async function bootstrap() {
       }
     },
     credentials: true,
-    methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
-
 
   app.use(
     helmet({
       contentSecurityPolicy: isProduction
         ? {
             directives: {
-              defaultSrc:  ["'self'"],
-              scriptSrc:   ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'],  // Swagger UI needs these
-              styleSrc:    ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'],
-              imgSrc:      ["'self'", 'data:', 'cdn.jsdelivr.net'],
-              connectSrc:  ["'self'", baseUrl],  // allow Swagger UI → API calls
-              fontSrc:     ["'self'", 'cdn.jsdelivr.net'],
-              objectSrc:   ["'none'"],
+              defaultSrc: ["'self'"],
+              scriptSrc: ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'], // Swagger UI needs these
+              styleSrc: ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'],
+              imgSrc: ["'self'", 'data:', 'cdn.jsdelivr.net'],
+              connectSrc: ["'self'", baseUrl], // allow Swagger UI → API calls
+              fontSrc: ["'self'", 'cdn.jsdelivr.net'],
+              objectSrc: ["'none'"],
               upgradeInsecureRequests: [],
             },
           }
         : false, // CSP off in dev — no friction
-      crossOriginEmbedderPolicy: false,  // required for Swagger UI iframes
+      crossOriginEmbedderPolicy: false, // required for Swagger UI iframes
     }),
   );
 
@@ -140,22 +144,19 @@ export async function bootstrap() {
     .setTitle('Zenith API')
     .setDescription('Zenith backend REST API')
     .setVersion('1.0')
-    // Primary server — what Swagger UI will send requests to
     .addServer(
-      `${baseUrl}/api/v1`,
+      isProduction && productionHost
+        ? `https://${productionHost}`
+        : `http://localhost:${PORT_CANDIDATES[0]}`,
       isProduction ? 'Production (Render)' : 'Local Development',
     )
-    // Always show local as a secondary option (useful when testing from localhost)
+  
     .addServer(
-      `http://localhost:${PORT_CANDIDATES[0]}`,
-      'Local fallback',
+      'http://localhost:3000',
+      'Local fallback (no prefix)',
     )
-    .addTag('auth',    'Authentication & sessions')
-    .addTag('tasks',   'User tasks')
-    .addBearerAuth(
-      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', name: 'JWT-auth' },
-      'JWT-auth',
-    )
+    .addTag('auth', 'Authentication & sessions')
+    // ... other tags, bearer auth, etc.
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
@@ -164,10 +165,10 @@ export async function bootstrap() {
   // registers its own routes outside the global prefix
   SwaggerModule.setup('docs', app, document, {
     swaggerOptions: {
-      persistAuthorization: true,          // keeps JWT across page reloads
+      persistAuthorization: true, // keeps JWT across page reloads
       displayRequestDuration: true,
-      tryItOutEnabled: true,               // "Try it out" enabled by default
-      filter: true,                        // search box in Swagger UI
+      tryItOutEnabled: true, // "Try it out" enabled by default
+      filter: true, // search box in Swagger UI
     },
     customSiteTitle: 'Zenith API Docs',
   });
@@ -194,11 +195,14 @@ export async function bootstrap() {
 
   if (!httpServer) throw new Error('No available port found!');
 
-  const address  = httpServer.address();
-  const realPort = typeof address === 'string' ? selectedPort : (address?.port ?? selectedPort);
+  const address = httpServer.address();
+  const realPort =
+    typeof address === 'string'
+      ? selectedPort
+      : (address?.port ?? selectedPort);
   const localUrl = `http://localhost:${realPort}`;
   const networkUrl = `http://${getLocalIp()}:${realPort}`;
-  const docsUrl  = isProduction ? `${baseUrl}/docs` : `${localUrl}/docs`;
+  const docsUrl = isProduction ? `${baseUrl}/docs` : `${localUrl}/docs`;
 
   Logger.log('checking the boostrap', 'Bootstrap');
   Logger.log('Zenith API  READY', 'Bootstrap');
@@ -206,7 +210,10 @@ export async function bootstrap() {
   Logger.log(`Network:    ${networkUrl}/api/v1`, 'Bootstrap');
   Logger.log(`Health:     ${localUrl}/api/v1/health`, 'Bootstrap');
   Logger.log(`Docs:       ${docsUrl}`, 'Bootstrap');
-  Logger.log(`Env:        ${isProduction ? 'production' : 'development'}`, 'Bootstrap');
+  Logger.log(
+    `Env:        ${isProduction ? 'production' : 'development'}`,
+    'Bootstrap',
+  );
   Logger.log('checking the boostrap', 'Bootstrap');
 
   return { app, httpServer };
