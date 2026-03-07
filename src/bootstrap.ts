@@ -144,6 +144,7 @@ export async function bootstrap() {
     .setTitle('Zenith API')
     .setDescription('Zenith backend REST API')
     .setVersion('1.0')
+    // Only add the relevant server
     .addServer(
       isProduction && productionHost
         ? `https://${productionHost}`
@@ -151,12 +152,8 @@ export async function bootstrap() {
       isProduction ? 'Production (Render)' : 'Local Development',
     )
   
-    .addServer(
-      'http://localhost:3000',
-      'Local fallback (no prefix)',
-    )
     .addTag('auth', 'Authentication & sessions')
-    // ... other tags, bearer auth, etc.
+    // .addBearerAuth(...) etc.
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
