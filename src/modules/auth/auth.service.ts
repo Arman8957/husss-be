@@ -310,7 +310,6 @@ export class AuthService {
         });
       }
 
-      // 🔐 Prevent provider mismatch enumeration
       if (user.provider !== AuthProvider.EMAIL) {
         await bcrypt.hash(dto.password, SALT_ROUNDS);
         throw new UnauthorizedException({
@@ -319,7 +318,7 @@ export class AuthService {
         });
       }
 
-      // 🔐 Password not configured
+  
       if (!user.passwordHash) {
         throw new UnauthorizedException({
           message: 'Invalid credentials',

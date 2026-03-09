@@ -304,9 +304,283 @@ export class EmailService {
     });
   }
 
+  //===========================couch template ===========================
+
+  // ─── Coach invitation emails ──────────────────────────────────────────────
+
+  /**
+   * Sends an invitation email to a prospective client.
+   * isExistingUser=true  → "log in and use this code"
+   * isExistingUser=false → "register then use this code"
+   */
+  async sendCoachInvitationEmail(
+    recipientEmail: string,
+    coachName: string,
+    gymName: string | null,
+    code: string,
+    link: string,
+    expiresAt: Date,
+    isExistingUser: boolean,
+  ): Promise<boolean> {
+    const expiryStr = expiresAt.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const actionBlock = isExistingUser
+      ? `
+        <p style="color:#374151;">Since you already have an account, simply log in and use your invitation code:</p>
+        <div style="text-align:center;margin:24px 0;">
+          <span style="display:inline-block;background:#f3f4f6;border:2px dashed #6b7280;border-radius:8px;padding:14px 32px;font-size:28px;font-weight:700;letter-spacing:6px;color:#111827;">${code}</span>
+        </div>
+        <div style="text-align:center;margin:16px 0;">
+          <a href="${link}" style="display:inline-block;background:#10b981;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:16px;">
+            Accept Invitation →
+          </a>
+        </div>
+      `
+      : `
+        <p style="color:#374151;">You're just a few steps away from your first session:</p>
+        <ol style="color:#374151;line-height:2.2;padding-left:20px;">
+          <li>Download the app or visit our website</li>
+          <li>Create your free account</li>
+          <li>Enter your invitation code below to join <strong>${coachName}</strong></li>
+        </ol>
+        <div style="text-align:center;margin:24px 0;">
+          <span style="display:inline-block;background:#f3f4f6;border:2px dashed #6b7280;border-radius:8px;padding:14px 32px;font-size:28px;font-weight:700;letter-spacing:6px;color:#111827;">${code}</span>
+        </div>
+        <div style="text-align:center;margin:16px 0;">
+          <a href="${link}" style="display:inline-block;background:#10b981;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:16px;">
+            Get Started →
+          </a>
+        </div>
+      `;
+
+    return this.sendEmail({
+      from: this.configService.get('smtp.from'),
+      to: recipientEmail,
+      subject: `${coachName} invited you to train together — HUSSS`,
+      html: `
+        <!DOCTYPE html><html><head><style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+        </style></head><body style="background:#f3f4f6;padding:32px 0;">
+          <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+            <div style="background:linear-gradient(135deg,#10b981,#059669);padding:36px;text-align:center;">
+              <div style="font-size:48px;margin-bottom:8px;">🏋️</div>
+              <h1 style="color:#fff;margin:0;font-size:26px;">You've Been Invited!</h1>
+              <p style="color:#d1fae5;margin:8px 0 0;font-size:15px;">${coachName}${gymName ? ` · ${gymName}` : ''}</p>
+            </div>
+            <div style="padding:36px;">
+              <p style="color:#374151;font-size:16px;margin-top:0;">Hi there,</p>
+              <p style="color:#374151;">
+                <strong>${coachName}</strong> has personally invited you to join${gymName ? ` <strong>${gymName}</strong>` : ' their coaching team'} as a client on HUSSS.
+              </p>
+              ${actionBlock}
+              <div style="background:#fef3c7;border-left:4px solid #f59e0b;border-radius:4px;padding:12px 16px;margin:24px 0;">
+                <p style="margin:0;color:#92400e;font-size:14px;">
+                  ⏰ This invitation expires on <strong>${expiryStr}</strong> and can only be used once.
+                </p>
+              </div>
+              <p style="color:#6b7280;font-size:13px;">If you weren't expecting this invitation, you can safely ignore this email.</p>
+            </div>
+            <div style="background:#f9fafb;padding:16px;text-align:center;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;color:#9ca3af;font-size:12px;">© ${new Date().getFullYear()} HUSSS. All rights reserved.</p>
+            </div>
+          </div>
+        </body></html>`,
+      text: `${coachName} invited you to join HUSSS. Code: ${code} | Link: ${link} | Expires: ${expiryStr}`,
+    });
+  }
+
+  // ─── Trainee restricted / unrestricted ───────────────────────────────────
+  /** Coach receives email when a client submits their PAR-Q */
+  async sendParqSubmittedEmail(
+    coachEmail: string,
+    coachName: string,
+    clientName: string,
+    dashboardUrl: string,
+  ): Promise<boolean> {
+    return this.sendEmail({
+      from: this.configService.get('smtp.from'),
+      to: coachEmail,
+      subject: `📋 ${clientName} submitted their PAR-Q — review required`,
+      html: `
+        <!DOCTYPE html><html><head></head><body style="background:#f3f4f6;padding:32px 0;font-family:Arial,sans-serif;">
+          <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+            <div style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);padding:28px;text-align:center;">
+              <div style="font-size:40px;">📋</div>
+              <h1 style="color:#fff;margin:8px 0 0;font-size:22px;">New PAR-Q Submission</h1>
+            </div>
+            <div style="padding:32px;">
+              <p style="color:#374151;margin-top:0;">Hi <strong>${coachName}</strong>,</p>
+              <p style="color:#374151;">
+                <strong>${clientName}</strong> has submitted their PAR-Q health questionnaire and is waiting for your review before they can book sessions.
+              </p>
+              <div style="background:#eff6ff;border-left:4px solid #3b82f6;border-radius:4px;padding:12px 16px;margin:20px 0;">
+                <p style="margin:0;color:#1e40af;font-size:14px;">⏳ Action required: Review and approve or reject the submission from your dashboard.</p>
+              </div>
+              <div style="text-align:center;margin:28px 0;">
+                <a href="${dashboardUrl}" style="display:inline-block;background:#3b82f6;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;font-size:15px;">
+                  Review PAR-Q →
+                </a>
+              </div>
+            </div>
+            <div style="background:#f9fafb;padding:16px;text-align:center;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;color:#9ca3af;font-size:12px;">© ${new Date().getFullYear()} HUSSS</p>
+            </div>
+          </div>
+        </body></html>`,
+      text: `${clientName} submitted their PAR-Q. Review at: ${dashboardUrl}`,
+    });
+  }
+
+  /** Client receives email after coach approves or rejects their PAR-Q */
+  async sendParqReviewedEmail(
+    clientEmail: string,
+    clientName: string,
+    coachName: string,
+    approved: boolean,
+    notes?: string,
+  ): Promise<boolean> {
+    const headerBg = approved
+      ? 'linear-gradient(135deg,#10b981,#059669)'
+      : 'linear-gradient(135deg,#f59e0b,#d97706)';
+
+    return this.sendEmail({
+      from: this.configService.get('smtp.from'),
+      to: clientEmail,
+      subject: approved
+        ? `✅ Your PAR-Q has been approved — you can now book sessions!`
+        : `⚠️ Your PAR-Q needs attention — ${coachName}`,
+      html: `
+        <!DOCTYPE html><html><head></head><body style="background:#f3f4f6;padding:32px 0;font-family:Arial,sans-serif;">
+          <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+            <div style="background:${headerBg};padding:28px;text-align:center;">
+              <div style="font-size:40px;">${approved ? '✅' : '⚠️'}</div>
+              <h1 style="color:#fff;margin:8px 0 0;font-size:22px;">${approved ? 'PAR-Q Approved!' : 'PAR-Q Needs Attention'}</h1>
+            </div>
+            <div style="padding:32px;">
+              <p style="color:#374151;margin-top:0;">Hi <strong>${clientName}</strong>,</p>
+              ${
+                approved
+                  ? `<p style="color:#374151;">Great news! Your coach <strong>${coachName}</strong> has reviewed and <strong style="color:#10b981;">approved</strong> your PAR-Q health questionnaire.</p>
+                   <p style="color:#374151;">You can now browse available time slots and book your first session!</p>
+                   <div style="background:#ecfdf5;border-left:4px solid #10b981;border-radius:4px;padding:12px 16px;margin:20px 0;">
+                     <p style="margin:0;color:#065f46;font-size:14px;">🎉 Open the app to book your first training session.</p>
+                   </div>`
+                  : `<p style="color:#374151;">Your coach <strong>${coachName}</strong> has reviewed your PAR-Q and it requires some follow-up before you can begin training.</p>
+                   ${notes ? `<div style="background:#fef3c7;border-left:4px solid #f59e0b;border-radius:4px;padding:12px 16px;margin:20px 0;"><p style="margin:0;color:#92400e;font-size:14px;"><strong>Coach's notes:</strong> ${notes}</p></div>` : ''}
+                   <p style="color:#374151;">Please contact your coach directly for next steps.</p>`
+              }
+            </div>
+            <div style="background:#f9fafb;padding:16px;text-align:center;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;color:#9ca3af;font-size:12px;">© ${new Date().getFullYear()} HUSSS</p>
+            </div>
+          </div>
+        </body></html>`,
+      text: approved
+        ? `Your PAR-Q was approved by ${coachName}. You can now book sessions!`
+        : `Your PAR-Q needs attention. Coach notes: ${notes ?? 'Contact your coach.'}`,
+    });
+  }
+
+  async sendClientJoinedEmail(
+    coachEmail: string,
+    coachName: string,
+    clientName: string,
+    clientEmail: string,
+    dashboardUrl: string,
+  ): Promise<boolean> {
+    return this.sendEmail({
+      from: this.configService.get('smtp.from'),
+      to: coachEmail,
+      subject: `🎉 ${clientName} joined your coaching team`,
+      html: `
+        <!DOCTYPE html><html><head></head><body style="background:#f3f4f6;padding:32px 0;font-family:Arial,sans-serif;">
+          <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+            <div style="background:linear-gradient(135deg,#10b981,#059669);padding:28px;text-align:center;">
+              <div style="font-size:40px;">🎉</div>
+              <h1 style="color:#fff;margin:8px 0 0;font-size:22px;">New Client Joined!</h1>
+            </div>
+            <div style="padding:32px;">
+              <p style="color:#374151;margin-top:0;">Hi <strong>${coachName}</strong>,</p>
+              <p style="color:#374151;">
+                <strong>${clientName}</strong> has accepted your invitation and joined your coaching team.
+              </p>
+              <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:20px 0;">
+                <p style="margin:0 0 6px;color:#6b7280;font-size:13px;">CLIENT DETAILS</p>
+                <p style="margin:4px 0;color:#111827;"><strong>${clientName}</strong></p>
+                <p style="margin:4px 0;color:#6b7280;font-size:14px;">${clientEmail}</p>
+              </div>
+              <div style="background:#eff6ff;border-left:4px solid #3b82f6;border-radius:4px;padding:12px 16px;margin:20px 0;">
+                <p style="margin:0;color:#1e40af;font-size:14px;">⏳ They need to complete their PAR-Q health questionnaire before booking sessions.</p>
+              </div>
+              <div style="text-align:center;margin:28px 0;">
+                <a href="${dashboardUrl}" style="display:inline-block;background:#10b981;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;font-size:15px;">
+                  View Dashboard →
+                </a>
+              </div>
+            </div>
+            <div style="background:#f9fafb;padding:16px;text-align:center;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;color:#9ca3af;font-size:12px;">© ${new Date().getFullYear()} HUSSS</p>
+            </div>
+          </div>
+        </body></html>`,
+      text: `${clientName} (${clientEmail}) joined your HUSSS coaching team. View dashboard: ${dashboardUrl}`,
+    });
+  }
+
+  async sendTraineeStatusEmail(
+    clientEmail: string,
+    clientName: string,
+    coachName: string,
+    restricted: boolean,
+    reason?: string,
+  ): Promise<boolean> {
+    const headerBg = restricted
+      ? 'linear-gradient(135deg,#ef4444,#dc2626)'
+      : 'linear-gradient(135deg,#10b981,#059669)';
+
+    return this.sendEmail({
+      from: this.configService.get('smtp.from'),
+      to: clientEmail,
+      subject: restricted
+        ? `🚫 Your HUSSS access has been restricted by ${coachName}`
+        : `✅ Your HUSSS access has been restored by ${coachName}`,
+      html: `
+        <!DOCTYPE html><html><head></head><body style="background:#f3f4f6;padding:32px 0;font-family:Arial,sans-serif;">
+          <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+            <div style="background:${headerBg};padding:28px;text-align:center;">
+              <div style="font-size:40px;">${restricted ? '🚫' : '✅'}</div>
+              <h1 style="color:#fff;margin:8px 0 0;font-size:22px;">${restricted ? 'Access Restricted' : 'Access Restored'}</h1>
+            </div>
+            <div style="padding:32px;">
+              <p style="color:#374151;margin-top:0;">Hi <strong>${clientName}</strong>,</p>
+              ${
+                restricted
+                  ? `<p style="color:#374151;">Your coach <strong>${coachName}</strong> has temporarily restricted your access to book sessions.</p>
+                   ${reason ? `<div style="background:#fee2e2;border-left:4px solid #ef4444;border-radius:4px;padding:12px 16px;margin:20px 0;"><p style="margin:0;color:#991b1b;font-size:14px;"><strong>Reason:</strong> ${reason}</p></div>` : ''}
+                   <p style="color:#374151;">Please contact your coach directly for more information.</p>`
+                  : `<p style="color:#374151;">Your coach <strong>${coachName}</strong> has restored your access. You can now log in and book sessions again.</p>`
+              }
+            </div>
+            <div style="background:#f9fafb;padding:16px;text-align:center;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;color:#9ca3af;font-size:12px;">© ${new Date().getFullYear()} HUSSS</p>
+            </div>
+          </div>
+        </body></html>`,
+      text: restricted
+        ? `Your HUSSS access was restricted by ${coachName}. ${reason ?? 'Contact your coach.'}`
+        : `Your HUSSS access was restored by ${coachName}. You can now book sessions.`,
+    });
+  }
+
   // ─── Private helper ───────────────────────────────────────────────────────
 
-  private async sendEmail(mailOptions: nodemailer.SendMailOptions): Promise<boolean> {
+  private async sendEmail(
+    mailOptions: nodemailer.SendMailOptions,
+  ): Promise<boolean> {
     try {
       await this.transporter.sendMail(mailOptions);
       this.logger.log(`Email sent to ${mailOptions.to}`);

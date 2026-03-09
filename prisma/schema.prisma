@@ -394,6 +394,7 @@ model ClientProfile {
   status      ClientStatus @default(PENDING_PAR_Q)
   gymName     String?
   gymLocation String?
+  notes String? 
 
   // Joined via invitation
   invitationId String?
