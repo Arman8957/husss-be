@@ -1,8 +1,21 @@
-
-
 import {
-  Controller, Post, Get, Patch, Delete,
-  Body, Param, UseGuards, HttpCode, HttpStatus, Headers, Ip,
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  Headers,
+  Ip,
+  UseInterceptors,
+  UploadedFile,
+  ParseFilePipeBuilder,
+  FileTypeValidator,
+  MaxFileSizeValidator,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -23,9 +36,22 @@ import { LogoutDto } from './dto/logout.dto';
 import { CoachRegisterDto } from './dto/coach-register.dto';
 import { BootstrapSuperAdminDto } from './dto/bootstrap-super-admin.dto';
 import { AdminCreateUserDto } from './dto/admin0create-user.dto';
-import { AdminApproveCoachDto, AdminChangeRoleDto, AdminToggleStatusDto } from './dto/admin-change-role.dto';
+import { memoryStorage } from 'multer';
+import {
+  AdminApproveCoachDto,
+  AdminChangeRoleDto,
+  AdminToggleStatusDto,
+} from './dto/admin-change-role.dto';
 import { AdminUpdatePermissionsDto } from './dto/admin-update-permissions.dto';
 import { SuperAdminGuard } from 'src/common/guards/super-admin.guard';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+} from '@nestjs/swagger';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -45,7 +71,6 @@ export class AuthController {
     return this.authService.register(dto, deviceInfo, ipAddress);
   }
 
-
   @Post('register/coach')
   @HttpCode(HttpStatus.CREATED)
   registerCoach(
@@ -60,7 +85,6 @@ export class AuthController {
   // PUBLIC — Login
   // ══════════════════════════════════════════════════════════════════════════
 
-
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(
@@ -71,13 +95,11 @@ export class AuthController {
     return this.authService.login(dto, deviceInfo, ipAddress);
   }
 
-
   @Post('google')
   @HttpCode(HttpStatus.OK)
   googleLogin(@Body() dto: GoogleLoginDto) {
     return this.authService.googleLogin(dto);
   }
-
 
   @Post('apple')
   @HttpCode(HttpStatus.OK)
@@ -99,13 +121,11 @@ export class AuthController {
   // PUBLIC — Email verification
   // ══════════════════════════════════════════════════════════════════════════
 
-
   @Post('verify/request')
   @HttpCode(HttpStatus.OK)
   requestEmailVerification(@Body() dto: ForgotPasswordDto) {
     return this.authService.requestEmailVerification(dto.email);
   }
-
 
   @Post('verify')
   @HttpCode(HttpStatus.OK)
@@ -117,6 +137,60 @@ export class AuthController {
   // PUBLIC — Password reset
   // ══════════════════════════════════════════════════════════════════════════
 
+  //==================profile  controller for image and phonenumber==========
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Update profile',
+    description:
+      'Update name, phone number, and/or avatar. Send as multipart/form-data.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        avatar: {
+          type: 'string',
+          format: 'binary',
+          description: 'Profile image (jpg/png/webp, max 5MB)',
+        },
+        name: {
+          type: 'string',
+          example: 'John Doe',
+        },
+        phoneNumber: {
+          type: 'string',
+          example: '01712345678',
+          description: 'Any format: 01712345678 / 1712345678 / +8801712345678',
+        },
+      },
+    },
+  })
+  @ApiBearerAuth('JWT-auth')
+  updateProfile(
+    @CurrentUser() user: any,
+    @Body() dto: UpdateProfileDto,
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addValidator(
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png|webp)$/ }),
+        )
+        .addValidator(new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }))
+        .build({ fileIsRequired: false }),
+    )
+    avatarFile?: Express.Multer.File,
+  ) {
+    return this.authService.updateProfile(user.id, dto, avatarFile);
+  }
+
+  //===============================
 
   @Post('password/forgot')
   @HttpCode(HttpStatus.OK)
@@ -134,7 +208,6 @@ export class AuthController {
   // PROTECTED — Any authenticated user
   // ══════════════════════════════════════════════════════════════════════════
 
-  
   @Get('me')
   @UseGuards(JwtAuthGuard)
   getMe(@CurrentUser() user: any) {
@@ -150,7 +223,6 @@ export class AuthController {
     };
   }
 
-
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
@@ -165,18 +237,20 @@ export class AuthController {
     return this.authService.logoutAll(user.id);
   }
 
-
   @Post('password/change')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   changePassword(@CurrentUser() user: any, @Body() dto: ChangePasswordDto) {
-    return this.authService.changePassword(user.id, dto.oldPassword, dto.newPassword);
+    return this.authService.changePassword(
+      user.id,
+      dto.oldPassword,
+      dto.newPassword,
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════════
   // PROTECTED — Session / device management
   // ══════════════════════════════════════════════════════════════════════════
-
 
   @Get('sessions')
   @UseGuards(JwtAuthGuard)
@@ -184,10 +258,12 @@ export class AuthController {
     return this.authService.getMySessions(user.id);
   }
 
-
   @Delete('sessions/:sessionId')
   @UseGuards(JwtAuthGuard)
-  revokeSession(@CurrentUser() user: any, @Param('sessionId') sessionId: string) {
+  revokeSession(
+    @CurrentUser() user: any,
+    @Param('sessionId') sessionId: string,
+  ) {
     return this.authService.revokeSession(user.id, sessionId);
   }
 
@@ -261,7 +337,11 @@ export class AuthController {
     @Param('userId') userId: string,
     @Body() dto: AdminToggleStatusDto,
   ) {
-    return this.authService.adminToggleUserStatus(userId, dto.isActive, admin.id);
+    return this.authService.adminToggleUserStatus(
+      userId,
+      dto.isActive,
+      admin.id,
+    );
   }
 
   /**
@@ -288,6 +368,10 @@ export class AuthController {
     @Param('userId') userId: string,
     @Body() dto: AdminUpdatePermissionsDto,
   ) {
-    return this.authService.adminUpdatePermissions(userId, dto.permissions, admin.id);
+    return this.authService.adminUpdatePermissions(
+      userId,
+      dto.permissions,
+      admin.id,
+    );
   }
 }
