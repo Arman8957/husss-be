@@ -1033,30 +1033,66 @@ export class CoachService {
   }
 
   // BODY DIMENSIONS
-  async createBodyDimension(userId: string, dto: CreateBodyDimensionDto) {
-    const existing = await this.prisma.bodyDimension.findFirst({
-      where: { userId, date: new Date(dto.date) },
-    });
-    if (existing)
-      throw new ConflictException(
-        `A measurement for ${dto.date} already exists. Use PATCH to update it.`,
-      );
-    return this.prisma.bodyDimension.create({
+ async createBodyDimension(userId: string, dto: CreateBodyDimensionDto) {
+  // Check duplicate measurement for the same date
+  const existing = await this.prisma.bodyDimension.findFirst({
+    where: { userId, date: new Date(dto.date) },
+  });
+
+  if (existing) {
+    throw new ConflictException(
+      `A measurement for ${dto.date} already exists. Use PATCH to update it.`,
+    );
+  }
+
+  // Run both writes in a transaction so they succeed or fail together
+  const [bodyDimension] = await this.prisma.$transaction([
+
+    // 1. Create BodyDimension row
+    this.prisma.bodyDimension.create({
       data: {
         userId,
-        date: new Date(dto.date),
-        weight: dto.weight ?? null,
-        weightUnit: (dto.weightUnit as any) ?? 'KG',
-        measureUnit: (dto.measureUnit as any) ?? 'CM',
-        height: dto.height ?? null,
-        waist: dto.waist ?? null,
-        leg: dto.leg ?? null,
-        arm: dto.arm ?? null,
+        date:          new Date(dto.date),
+        weight:        dto.weight        ?? null,
+        weightUnit:    (dto.weightUnit   as any) ?? 'KG',
+        measureUnit:   (dto.measureUnit  as any) ?? 'CM',
+        height:        dto.height        ?? null,
+        waist:         dto.waist         ?? null,
+        leg:           dto.leg           ?? null,
+        arm:           dto.arm           ?? null,
         bodyFatPercent: dto.bodyFatPercent ?? null,
-        notes: dto.notes ?? null,
+        notes:         dto.notes         ?? null,
       },
-    });
-  }
+    }),
+
+    // 2. Update User.gender and User.age only if provided
+    this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(dto.gender !== undefined && { gender: dto.gender as any }),
+        ...(dto.age    !== undefined && { age:    dto.age }),
+      },
+      select: {
+        id:     true,
+        gender: true,
+        age:    true,
+      },
+    }),
+
+  ]);
+
+  // Return the body dimension enriched with the user's current gender + age
+  const user = await this.prisma.user.findUnique({
+    where:  { id: userId },
+    select: { gender: true, age: true },
+  });
+
+  return {
+    ...bodyDimension,
+    gender: user?.gender ?? null,
+    age:    user?.age    ?? null,
+  };
+}
 
   async updateBodyDimension(
     userId: string,

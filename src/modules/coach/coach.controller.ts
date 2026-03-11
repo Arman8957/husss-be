@@ -1,17 +1,34 @@
 // src/coach/coach.controller.ts
 import {
-  Controller, Get, Post, Patch, Put, Delete,
-  Body, Param, Query, UseGuards, HttpCode, HttpStatus,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Put,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { CoachService } from './coach.service';
 import { UserRole } from '@prisma/client';
 import {
-  CreateAvailabilitySlotDto, AvailabilityQueryDto,
-  BookSessionDto, UpdateSessionStatusDto, SessionQueryDto,
-  GenerateInvitationDto, AcceptInvitationDto,
-  SubmitParqDto, ReviewParqDto,
+  CreateAvailabilitySlotDto,
+  AvailabilityQueryDto,
+  BookSessionDto,
+  UpdateSessionStatusDto,
+  SessionQueryDto,
+  GenerateInvitationDto,
+  AcceptInvitationDto,
+  SubmitParqDto,
+  ReviewParqDto,
   SetupClientProfileDto,
-  CreateBodyDimensionDto, UpdateBodyDimensionDto, BodyDimensionQueryDto,
+  CreateBodyDimensionDto,
+  UpdateBodyDimensionDto,
+  BodyDimensionQueryDto,
   UpdateReminderPreferencesDto,
   SendInvitationEmailDto,
   UpdateTraineeDto,
@@ -48,7 +65,10 @@ export class CoachController {
 
   /** GET /api/v1/coach/availability?from=&to=&includeBooked= */
   @Get('availability')
-  getAvailability(@CurrentUser() user: any, @Query() query: AvailabilityQueryDto) {
+  getAvailability(
+    @CurrentUser() user: any,
+    @Query() query: AvailabilityQueryDto,
+  ) {
     return this.coachService.getCoachAvailability(user.id, query);
   }
 
@@ -142,8 +162,15 @@ export class CoachController {
   }
 
   // Keep old /clients aliases for backward-compat
-  @Get('clients')       getClients(@CurrentUser() u: any) { return this.coachService.getCoachClients(u.id); }
-  @Get('clients/:id')   getClientDetails(@CurrentUser() u: any, @Param('id') id: string) { return this.coachService.getClientDetails(u.id, id); }
+  @Get('clients') getClients(@CurrentUser() u: any) {
+    return this.coachService.getCoachClients(u.id);
+  }
+  @Get('clients/:id') getClientDetails(
+    @CurrentUser() u: any,
+    @Param('id') id: string,
+  ) {
+    return this.coachService.getClientDetails(u.id, id);
+  }
 
   // ── Invitation ───────────────────────────────────────────────────────────
   /**
@@ -153,7 +180,10 @@ export class CoachController {
    */
   @Post('invitations')
   @HttpCode(HttpStatus.CREATED)
-  generateInvitation(@CurrentUser() user: any, @Body() dto: GenerateInvitationDto) {
+  generateInvitation(
+    @CurrentUser() user: any,
+    @Body() dto: GenerateInvitationDto,
+  ) {
     return this.coachService.generateInvitation(user.id, dto);
   }
 
@@ -194,7 +224,10 @@ export class CoachController {
 
   /** GET /api/v1/coach/parq/:submissionId */
   @Get('parq/:submissionId')
-  getParqDetail(@CurrentUser() user: any, @Param('submissionId') submissionId: string) {
+  getParqDetail(
+    @CurrentUser() user: any,
+    @Param('submissionId') submissionId: string,
+  ) {
     return this.coachService.getParqDetail(user.id, submissionId);
   }
 
@@ -227,7 +260,11 @@ export class CoachController {
     @Param('clientProfileId') clientProfileId: string,
     @Query() query: BodyDimensionQueryDto,
   ) {
-    return this.coachService.getClientBodyDimensions(user.id, clientProfileId, query);
+    return this.coachService.getClientBodyDimensions(
+      user.id,
+      clientProfileId,
+      query,
+    );
   }
 }
 
@@ -268,10 +305,15 @@ export class ClientCoachController {
   // Session Booking
   /** GET /api/v1/client/coach/availability?from=&to= */
   @Get('coach/availability')
-  getCoachAvailability(@CurrentUser() user: any, @Query() query: AvailabilityQueryDto) {
-    return this.coachService.getMyCoachInfo(user.id).then((info) =>
-      this.coachService.getCoachPublicAvailability(info.coach.id, query),
-    );
+  getCoachAvailability(
+    @CurrentUser() user: any,
+    @Query() query: AvailabilityQueryDto,
+  ) {
+    return this.coachService
+      .getMyCoachInfo(user.id)
+      .then((info) =>
+        this.coachService.getCoachPublicAvailability(info.coach.id, query),
+      );
   }
 
   /** POST /api/v1/client/sessions/book  Body: { availabilityId, sessionType?, notes? } */
@@ -284,7 +326,10 @@ export class ClientCoachController {
   /** POST /api/v1/client/sessions/:availabilityId/confirm */
   @Post('sessions/:availabilityId/confirm')
   @HttpCode(HttpStatus.OK)
-  confirmSession(@CurrentUser() user: any, @Param('availabilityId') availabilityId: string) {
+  confirmSession(
+    @CurrentUser() user: any,
+    @Param('availabilityId') availabilityId: string,
+  ) {
     return this.coachService.confirmSessionBooking(user.id, availabilityId);
   }
 
@@ -292,19 +337,29 @@ export class ClientCoachController {
   /** POST /api/v1/client/body-dimensions */
   @Post('body-dimensions')
   @HttpCode(HttpStatus.CREATED)
-  createBodyDimension(@CurrentUser() user: any, @Body() dto: CreateBodyDimensionDto) {
+  createBodyDimension(
+    @CurrentUser() user: any,
+    @Body() dto: CreateBodyDimensionDto,
+  ) {
     return this.coachService.createBodyDimension(user.id, dto);
   }
 
   /** PATCH /api/v1/client/body-dimensions/:id */
   @Patch('body-dimensions/:id')
-  updateBodyDimension(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: UpdateBodyDimensionDto) {
+  updateBodyDimension(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() dto: UpdateBodyDimensionDto,
+  ) {
     return this.coachService.updateBodyDimension(user.id, id, dto);
   }
 
   /** GET /api/v1/client/body-dimensions?from=&to=&page=&limit= */
   @Get('body-dimensions')
-  getBodyDimensions(@CurrentUser() user: any, @Query() query: BodyDimensionQueryDto) {
+  getBodyDimensions(
+    @CurrentUser() user: any,
+    @Query() query: BodyDimensionQueryDto,
+  ) {
     return this.coachService.getMyBodyDimensions(user.id, query);
   }
 
@@ -324,7 +379,10 @@ export class ClientCoachController {
 
   /** PATCH /api/v1/client/reminders/preferences  Body: { pushNotifications?, emailReminders?, smsReminders? } */
   @Patch('reminders/preferences')
-  updateReminderPreferences(@CurrentUser() user: any, @Body() dto: UpdateReminderPreferencesDto) {
+  updateReminderPreferences(
+    @CurrentUser() user: any,
+    @Body() dto: UpdateReminderPreferencesDto,
+  ) {
     return this.coachService.updateReminderPreferences(user.id, dto);
   }
 }
@@ -339,19 +397,25 @@ export class PublicCoachController {
   /** GET /api/v1/invite/:code  — preview before accepting */
   @Get(':code')
   async previewInvitation(@Param('code') code: string) {
-    const invitation = await this.coachService['prisma'].coachInvitation.findUnique({
+    const invitation = await this.coachService[
+      'prisma'
+    ].coachInvitation.findUnique({
       where: { code },
-      include: { coach: { include: { user: { select: { name: true, avatar: true } } } } },
+      include: {
+        coach: { include: { user: { select: { name: true, avatar: true } } } },
+      },
     });
-    if (!invitation)               return { valid: false, reason: 'Invitation not found.' };
-    if (invitation.isUsed)         return { valid: false, reason: 'This invitation has already been used.' };
-    if (invitation.expiresAt < new Date()) return { valid: false, reason: 'This invitation has expired.' };
+    if (!invitation) return { valid: false, reason: 'Invitation not found.' };
+    if (invitation.isUsed)
+      return { valid: false, reason: 'This invitation has already been used.' };
+    if (invitation.expiresAt < new Date())
+      return { valid: false, reason: 'This invitation has expired.' };
     return {
       valid: true,
-      coachName:   invitation.coach.user.name,
+      coachName: invitation.coach.user.name,
       coachAvatar: invitation.coach.user.avatar,
-      gymName:     invitation.coach.gymName,
-      expiresAt:   invitation.expiresAt,
+      gymName: invitation.coach.gymName,
+      expiresAt: invitation.expiresAt,
     };
   }
 
@@ -374,11 +438,13 @@ export class PublicCoachController {
   @Post('accept-authenticated')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
-  acceptInvitationAuthenticated(@CurrentUser() user: any, @Body() dto: AcceptInvitationDto) {
+  acceptInvitationAuthenticated(
+    @CurrentUser() user: any,
+    @Body() dto: AcceptInvitationDto,
+  ) {
     return this.coachService.acceptInvitation(dto, user.id);
   }
 }
-
 
 // // src/coach/coach.controller.ts
 // //
@@ -418,7 +484,6 @@ export class PublicCoachController {
 //   constructor(private readonly coachService: CoachService) {}
 
 //   // ── Dashboard ──────────────────────────────────────────────────────────
-
 
 //   @Get('dashboard')
 //   getDashboard(@CurrentUser() user: any) {

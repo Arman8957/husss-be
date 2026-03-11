@@ -33,8 +33,9 @@ const PORT_CANDIDATES = [
 export async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
+    rawBody: true ,
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
-  });
+  }, );
 
   const config    = app.get(ConfigService);
   const prisma    = app.get(PrismaService);
@@ -157,7 +158,13 @@ export async function bootstrap() {
   // ── global prefix + versioning ────────────────────────────────────────────
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
-
+  //  app.useGlobalPipes(
+  //   new ValidationPipe({
+  //     whitelist:            true,
+  //     forbidNonWhitelisted: true,
+  //     transform:            true,
+  //   }),
+  // );
   // ── Swagger setup ─────────────────────────────────────────────────────────
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Zenith API')

@@ -272,7 +272,6 @@ export class SetupClientProfileDto {
 // ─── BODY DIMENSION (client submits, coach can view) ─────────────────────────
 
 export class CreateBodyDimensionDto {
-
   @IsDateString()
   date!: string; // "2026-02-15"
 
@@ -314,6 +313,17 @@ export class CreateBodyDimensionDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsEnum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY'])
+  gender?: 'MALE' | 'FEMALE' | 'OTHER' | 'PREFER_NOT_TO_SAY';
+
+  @IsOptional()
+  @IsInt()
+  @Min(13)
+  @Max(120)
+  @Type(() => Number)
+  age?: number;
 }
 
 export class UpdateBodyDimensionDto extends PartialType(
@@ -359,9 +369,6 @@ export class UpdateReminderPreferencesDto {
   smsReminders?: boolean; // 2h before session
 }
 
-
-
-
 // ── Send invitation email ─────────────────────────────────────────────────────
 /**
  * POST /coach/invitations/:invitationId/send-email
@@ -397,7 +404,7 @@ export class UpdateTraineeDto {
   @IsOptional()
   @IsString()
   @MaxLength(1000)
-  notes?: string;      // coach's private notes about this trainee
+  notes?: string; // coach's private notes about this trainee
 }
 
 // ── Restrict / restore trainee ────────────────────────────────────────────────
@@ -413,5 +420,5 @@ export class RestrictTraineeDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
-  reason?: string;     // shown in email + in-app notification
+  reason?: string; // shown in email + in-app notification
 }
