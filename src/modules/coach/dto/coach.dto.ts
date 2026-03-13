@@ -178,7 +178,7 @@ export class SubmitParqDto {
 
   @IsOptional()
   @IsString()
-  boneJointDetails?: string; // "write down" field from screenshot
+  boneJointDetails?: string; 
 
   @IsOptional()
   @IsBoolean()

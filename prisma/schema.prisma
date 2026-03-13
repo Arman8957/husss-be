@@ -451,9 +451,20 @@ model ParqSubmission {
   // Blood Pressure & Cardiovascular
   hasHighBloodPressure    Boolean
   doctorLimitedActivity   Boolean
+  surgeryDetails         String?
+  hasDiabetesOrMetabolic  Boolean?
+  prescriptionDetails    String?
+  hasAsthmaOrRespiratory  Boolean?
+  hasNeurologicalCondition Boolean?
+  isPregnantOrRecentBirth  Boolean?
+  signatureData    String?
+  signatureName   String?
+  doctorClearanceFileUrl  String?
   // Musculoskeletal
   hasBoneJointProblem     Boolean
   takingPrescription      Boolean
+  boneJointDetails        String?
+  hadSurgeryLast12Months  Boolean?
   // Other
   hasOtherReason          Boolean
   otherReasonDetails      String?

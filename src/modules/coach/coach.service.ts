@@ -844,89 +844,206 @@ export class CoachService {
   }
 
   // PAR-Q
-  async submitParq(clientUserId: string, dto: SubmitParqDto) {
+  // async submitParq(clientUserId: string, dto: SubmitParqDto) {
+  //   const clientProfile = await this.getClientProfileOrThrow(clientUserId);
+  //   const requiresDoctorClearance =
+  //     dto.hasHeartCondition ||
+  //     dto.chestPainDuringActivity ||
+  //     dto.chestPainAtRest ||
+  //     dto.losesBalanceDizziness ||
+  //     dto.hasHighBloodPressure;
+  //   const submission = await this.prisma.parqSubmission.create({
+  //     data: {
+  //       userId: clientUserId,
+  //       clientProfileId: clientProfile.id,
+  //       hasHeartCondition: dto.hasHeartCondition,
+  //       chestPainDuringActivity: dto.chestPainDuringActivity,
+  //       chestPainAtRest: dto.chestPainAtRest,
+  //       losesBalanceDizziness: dto.losesBalanceDizziness,
+  //       hasHighBloodPressure: dto.hasHighBloodPressure,
+  //       doctorLimitedActivity: dto.doctorLimitedActivity,
+  //       hasBoneJointProblem: dto.hasBoneJointProblem,
+  //       takingPrescription: dto.takingPrescription,
+  //       hasOtherReason: dto.hasOtherReason,
+  //       otherReasonDetails: dto.otherReasonDetails ?? null,
+  //       signature: dto.signatureData ?? dto.signatureName,
+  //       signedAt: new Date(),
+  //       isApproved: false,
+  //     },
+  //   });
+
+  //   const coachUserId = await this.getUserIdFromCoachProfileId(
+  //     this.prisma as any,
+  //     clientProfile.coachId,
+  //   );
+  //   await this.prisma.notification.create({
+  //     data: {
+  //       userId: coachUserId,
+  //       type: 'PAR_Q_REVIEW',
+  //       title: 'New PAR-Q Submission',
+  //       body: 'A client has submitted their health questionnaire for review.',
+  //       data: { parqId: submission.id, clientProfileId: clientProfile.id },
+  //     },
+  //   });
+
+  //   // Email coach
+  //   const [coachUser, clientUser] = await Promise.all([
+  //     this.prisma.user.findUnique({
+  //       where: { id: coachUserId },
+  //       select: { name: true, email: true },
+  //     }),
+  //     this.prisma.user.findUnique({
+  //       where: { id: clientUserId },
+  //       select: { name: true },
+  //     }),
+  //   ]);
+  //   const dashboardUrl = `${process.env.APP_BASE_URL ?? 'https://app.monsterconfusion.com'}/coach/parq`;
+  //   if (coachUser?.email) {
+  //     this.emailService
+  //       .sendParqSubmittedEmail(
+  //         coachUser.email,
+  //         coachUser.name ?? 'Coach',
+  //         clientUser?.name ?? 'A client',
+  //         dashboardUrl,
+  //       )
+  //       .catch((err) =>
+  //         this.logger.error('Failed to send PAR-Q submitted email:', err),
+  //       );
+  //   }
+
+  //   return {
+  //     message: requiresDoctorClearance
+  //       ? 'PAR-Q submitted. Your coach will review it. Some answers may require doctor clearance.'
+  //       : 'PAR-Q submitted successfully. Your coach will review and approve it shortly.',
+  //     submissionId: submission.id,
+  //     requiresDoctorClearance,
+  //   };
+  // }
+   async submitParq(clientUserId: string, dto: SubmitParqDto) {
     const clientProfile = await this.getClientProfileOrThrow(clientUserId);
+    // Flag any condition that may need doctor clearance before training
     const requiresDoctorClearance =
-      dto.hasHeartCondition ||
-      dto.chestPainDuringActivity ||
-      dto.chestPainAtRest ||
-      dto.losesBalanceDizziness ||
-      dto.hasHighBloodPressure;
+      dto.hasHeartCondition        ||
+      dto.chestPainDuringActivity  ||
+      dto.chestPainAtRest          ||
+      dto.losesBalanceDizziness    ||
+      dto.hasHighBloodPressure     ||
+      dto.hadSurgeryLast12Months   ||  
+      dto.hasDiabetesOrMetabolic   || 
+      dto.hasAsthmaOrRespiratory   ||   
+      dto.hasNeurologicalCondition || 
+      dto.isPregnantOrRecentBirth;      
     const submission = await this.prisma.parqSubmission.create({
       data: {
-        userId: clientUserId,
-        clientProfileId: clientProfile.id,
-        hasHeartCondition: dto.hasHeartCondition,
+        userId:                  clientUserId,
+        clientProfileId:         clientProfile.id,
+        // ── General Health ──────────────────────────────────────────────
+        hasHeartCondition:       dto.hasHeartCondition,
         chestPainDuringActivity: dto.chestPainDuringActivity,
-        chestPainAtRest: dto.chestPainAtRest,
-        losesBalanceDizziness: dto.losesBalanceDizziness,
-        hasHighBloodPressure: dto.hasHighBloodPressure,
-        doctorLimitedActivity: dto.doctorLimitedActivity,
-        hasBoneJointProblem: dto.hasBoneJointProblem,
-        takingPrescription: dto.takingPrescription,
-        hasOtherReason: dto.hasOtherReason,
-        otherReasonDetails: dto.otherReasonDetails ?? null,
-        signature: dto.signatureData ?? dto.signatureName,
-        signedAt: new Date(),
-        isApproved: false,
+        chestPainAtRest:         dto.chestPainAtRest,
+        losesBalanceDizziness:   dto.losesBalanceDizziness,
+        // ── Blood Pressure & Cardiovascular ────────────────────────────
+        hasHighBloodPressure:    dto.hasHighBloodPressure,
+        doctorLimitedActivity:   dto.doctorLimitedActivity,
+        // ── Musculoskeletal ─────────────────────────────────────────────
+        hasBoneJointProblem:     dto.hasBoneJointProblem,
+        boneJointDetails:        dto.boneJointDetails        ?? null,  
+        hadSurgeryLast12Months:  dto.hadSurgeryLast12Months  ?? false, 
+        surgeryDetails:          dto.surgeryDetails           ?? null, 
+        // ── Metabolic & Medical ─────────────────────────────────────────
+        hasDiabetesOrMetabolic:  dto.hasDiabetesOrMetabolic  ?? false, 
+        takingPrescription:      dto.takingPrescription,
+        prescriptionDetails:     dto.prescriptionDetails      ?? null, 
+        // ── Respiratory & Neurological ──────────────────────────────────
+        hasAsthmaOrRespiratory:   dto.hasAsthmaOrRespiratory  ?? false, 
+        hasNeurologicalCondition: dto.hasNeurologicalCondition ?? false,
+        isPregnantOrRecentBirth:  dto.isPregnantOrRecentBirth  ?? false, 
+        // ── Other ───────────────────────────────────────────────────────
+        hasOtherReason:          dto.hasOtherReason,
+        otherReasonDetails:      dto.otherReasonDetails       ?? null,
+        doctorClearanceFileUrl:  dto.doctorClearanceFileUrl   ?? null,  
+        // ── Signature ───────────────────────────────────────────────────
+        // signatureData (base64/URL) takes priority; fall back to typed name
+        signature:               dto.signatureData ?? dto.signatureName ?? null,
+        signedAt:                new Date(),
+        isApproved:              false,
       },
     });
-
-    const coachUserId = await this.getUserIdFromCoachProfileId(
-      this.prisma as any,
-      clientProfile.coachId,
-    );
+ 
+    const coachUserId = await this.getUserIdFromCoachProfileId(this.prisma as any, clientProfile.coachId);
     await this.prisma.notification.create({
-      data: {
-        userId: coachUserId,
-        type: 'PAR_Q_REVIEW',
-        title: 'New PAR-Q Submission',
-        body: 'A client has submitted their health questionnaire for review.',
-        data: { parqId: submission.id, clientProfileId: clientProfile.id },
-      },
+      data: { userId: coachUserId, type: 'PAR_Q_REVIEW', title: 'New PAR-Q Submission', body: 'A client has submitted their health questionnaire for review.', data: { parqId: submission.id, clientProfileId: clientProfile.id } },
     });
-
+ 
     // Email coach
     const [coachUser, clientUser] = await Promise.all([
-      this.prisma.user.findUnique({
-        where: { id: coachUserId },
-        select: { name: true, email: true },
-      }),
-      this.prisma.user.findUnique({
-        where: { id: clientUserId },
-        select: { name: true },
-      }),
+      this.prisma.user.findUnique({ where: { id: coachUserId }, select: { name: true, email: true } }),
+      this.prisma.user.findUnique({ where: { id: clientUserId }, select: { name: true } }),
     ]);
     const dashboardUrl = `${process.env.APP_BASE_URL ?? 'https://app.monsterconfusion.com'}/coach/parq`;
     if (coachUser?.email) {
-      this.emailService
-        .sendParqSubmittedEmail(
-          coachUser.email,
-          coachUser.name ?? 'Coach',
-          clientUser?.name ?? 'A client',
-          dashboardUrl,
-        )
-        .catch((err) =>
-          this.logger.error('Failed to send PAR-Q submitted email:', err),
-        );
+      this.emailService.sendParqSubmittedEmail(coachUser.email, coachUser.name ?? 'Coach', clientUser?.name ?? 'A client', dashboardUrl)
+        .catch((err) => this.logger.error('Failed to send PAR-Q submitted email:', err));
     }
-
+ 
     return {
       message: requiresDoctorClearance
         ? 'PAR-Q submitted. Your coach will review it. Some answers may require doctor clearance.'
         : 'PAR-Q submitted successfully. Your coach will review and approve it shortly.',
-      submissionId: submission.id,
-      requiresDoctorClearance,
+      submissionId: submission.id, requiresDoctorClearance,
     };
   }
-
+ 
   async getClientParqHistory(clientUserId: string) {
     const clientProfile = await this.getClientProfileOrThrow(clientUserId);
     return this.prisma.parqSubmission.findMany({
-      where: { clientProfileId: clientProfile.id },
+      where:   { clientProfileId: clientProfile.id },
       orderBy: { createdAt: 'desc' },
     });
   }
+
+  //============single id ======================
+    async getClientParqById(clientUserId: string, submissionId: string) {
+    const clientProfile = await this.getClientProfileOrThrow(clientUserId);
+    const submission = await this.prisma.parqSubmission.findFirst({
+      where: { id: submissionId, clientProfileId: clientProfile.id },
+    });
+    if (!submission) throw new NotFoundException('PAR-Q submission not found');
+    return submission;
+  }
+ 
+  // async reviewParq(coachUserId: string, submissionId: string, dto: ReviewParqDto) {
+  //   const coachProfile = await this.getCoachProfileOrThrow(coachUserId);
+  //   const submission = await this.prisma.parqSubmission.findFirst({
+  //     where: { id: submissionId, clientProfile: { coachId: coachProfile.id } },
+  //     include: { clientProfile: true, user: true },
+  //   });
+  //   if (!submission) throw new NotFoundException('PAR-Q submission not found');
+  //   const result = await this.prisma.$transaction(async (tx) => {
+  //     const updated = await tx.parqSubmission.update({ where: { id: submissionId }, data: { isApproved: dto.approved, reviewedByCoachAt: new Date() } });
+  //     if (dto.approved) await tx.clientProfile.update({ where: { id: submission.clientProfileId }, data: { status: 'ACTIVE' } });
+  //     await tx.notification.create({
+  //       data: {
+  //         userId: submission.userId, type: 'PAR_Q_REVIEW',
+  //         title: dto.approved ? 'PAR-Q Approved ✅' : 'PAR-Q Requires Attention',
+  //         body: dto.approved ? 'Your health questionnaire has been approved. You can now book sessions!' : `Your PAR-Q needs attention. ${dto.notes ?? 'Please contact your coach.'}`,
+  //         data: { parqId: submissionId, approved: dto.approved },
+  //       },
+  //     });
+  //     return { ...updated, message: dto.approved ? 'PAR-Q approved. Client can now book sessions.' : 'PAR-Q rejected. Client has been notified.' };
+  //   });
+ 
+  //   // Email client
+  //   const coachUser = await this.prisma.user.findUnique({ where: { id: coachUserId }, select: { name: true } });
+  //   this.emailService.sendParqReviewedEmail(
+  //     submission.user.email, submission.user.name ?? 'there',
+  //     coachUser?.name ?? 'Your coach', dto.approved, dto.notes,
+  //   ).catch((err) => this.logger.error('Failed to send PAR-Q reviewed email:', err));
+ 
+  //   return result;
+  // }
+ 
+
 
   async reviewParq(
     coachUserId: string,
