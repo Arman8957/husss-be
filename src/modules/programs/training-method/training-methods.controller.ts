@@ -15,7 +15,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 
 
-@ApiTags('🔐 Admin — Training Methods')
+@ApiTags(' Admin — Training Methods')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('admin/training-methods')
