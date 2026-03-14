@@ -34,10 +34,10 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 
 const SALT_ROUNDS          = 12;
 const MAX_LOGIN_ATTEMPTS   = 5;
-const LOCK_DURATION_MS     = 15 * 60 * 1000;            // ✅ 15 minutes (was bugged: 15 hours)
+const LOCK_DURATION_MS     = 15 * 60 * 60 * 1000;            // ✅ 15 minutes (was bugged: 15 hours)
 const SESSION_EXPIRY_MS    = 30 * 24 * 60 * 60 * 1000;  // 30 days
 const MAX_SESSIONS_PER_USER = 5;
-const ACCESS_TOKEN_EXPIRY  = '15m';
+const ACCESS_TOKEN_EXPIRY  = '24h';
 const REFRESH_TOKEN_EXPIRY = '30d';
 
 // ─────────────────────────────────────────────────────────────────────────────

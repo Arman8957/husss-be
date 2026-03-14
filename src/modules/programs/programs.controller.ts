@@ -135,48 +135,36 @@ export class AdminProgramsController {
   @Post(':id/days/:dayId/exercises')
   @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @HttpCode(HttpStatus.CREATED)
-  // ✅ Accept two named file fields: 'file' (image) + 'animationFile' (gif/mp4)
   @UseInterceptors(
     FileFieldsInterceptor(
       [
-        { name: 'file', maxCount: 1 }, // exercise static image
-        { name: 'animationFile', maxCount: 1 }, // exercise animation / gif
+        { name: 'file', maxCount: 1 }, // exercise image
+        { name: 'animationFile', maxCount: 1 }, // exercise animation / video
       ],
       {
         storage: memoryStorage(),
-        limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB hard limit (animation can be large)
+        limits: {
+          fileSize: 50 * 1024 * 1024, // 50MB — Cloudinary will reject oversized files with a clear error
+          files: 2,
+        },
         fileFilter: (
           _req: any,
           file: Express.Multer.File,
           cb: (error: Error | null, acceptFile: boolean) => void,
         ) => {
-          // image field: jpg / png / webp / gif
+          // ✅ Only check file type here (NOT size — size is unknown at filter time in multer)
+          // Use cb(null, false) to silently reject invalid types.
+          // We validate accepted files in the handler below with proper error messages.
           if (file.fieldname === 'file') {
-            if (!/\.(jpg|jpeg|png|webp|gif)$/i.test(file.originalname)) {
-              return cb(
-                new BadRequestException('file must be jpg, png, webp, or gif'),
-                false,
-              );
-            }
-            if (file.size > 5 * 1024 * 1024) {
-              return cb(
-                new BadRequestException('file exceeds 5MB limit'),
-                false,
-              );
-            }
+            const valid = /\.(jpg|jpeg|png|webp|gif)$/i.test(file.originalname);
+            return cb(null, valid);
           }
-          // animation field: gif / mp4 / webm / mov
           if (file.fieldname === 'animationFile') {
-            if (!/\.(gif|mp4|webm|mov)$/i.test(file.originalname)) {
-              return cb(
-                new BadRequestException(
-                  'animationFile must be gif, mp4, webm, or mov',
-                ),
-                false,
-              );
-            }
+            // ✅ Accept gif, mp4, webm, mov for animation
+            const valid = /\.(gif|mp4|webm|mov)$/i.test(file.originalname);
+            return cb(null, valid);
           }
-          cb(null, true);
+          cb(null, false);
         },
       },
     ),
@@ -187,23 +175,21 @@ export class AdminProgramsController {
     description: `
 **Content-Type: multipart/form-data**
  
-Send the exercise payload as a JSON string in the \`data\` field.
-Optionally attach image and/or animation files.
+Send exercise JSON in the \`data\` field. Optionally attach files.
  
-| Form field      | Type | Required | Description                                 |
-|-----------------|------|----------|---------------------------------------------|
-| data            | Text | ✅ Yes    | JSON string — full AddExerciseToDayDto      |
-| file            | File | ❌ No     | Exercise image (jpg/png/webp/gif, max 5MB)  |
-| animationFile   | File | ❌ No     | Animation/gif (gif/mp4/webm/mov, max 20MB)  |
+| Form field      | Type | Required | Description                                      |
+|-----------------|------|----------|--------------------------------------------------|
+| data            | Text | ✅ Yes    | JSON string of AddExerciseToDayDto               |
+| file            | File | ❌ No     | Exercise image (jpg/png/webp/gif, max 5MB)       |
+| animationFile   | File | ❌ No     | Animation/video (gif/mp4/webm/mov, max 20MB)     |
  
-**tabType values:**
-- \`MAIN_EXERCISE\` — regular exercise (shows in main tab)
-- \`BFR_EXERCISE\`  — blood flow restriction finisher
-- \`ABS_EXERCISE\`  — abs workout
+**4 supported modes:**
+1. **File upload only** — upload file(s), no URL in JSON
+2. **URL in JSON only** — pass \`exerciseImageUrl\` / \`exerciseAnimationUrl\` in data, no file
+3. **Both file + URL** — file upload takes precedence over JSON URL
+4. **Neither** — valid for library exercises (exerciseId provided)
  
-**Two modes for the exercise:**
-1. Pick from library: include \`exerciseId\` in the JSON data
-2. Create inline: include \`exerciseName\` (+ optional description/for/image)
+**tabType:** \`MAIN_EXERCISE\` | \`BFR_EXERCISE\` | \`ABS_EXERCISE\`
 `,
   })
   @ApiParam({ name: 'id', description: 'Program ID' })
@@ -211,19 +197,17 @@ Optionally attach image and/or animation files.
   async addExercise(
     @Param('id') id: string,
     @Param('dayId') dayId: string,
-    // ✅ Both files arrive in a single decorated object
     @UploadedFiles()
-    files: {
-      file?: Express.Multer.File[];
-      animationFile?: Express.Multer.File[];
-    },
+    files:
+      | { file?: Express.Multer.File[]; animationFile?: Express.Multer.File[] }
+      | undefined,
     @Body('data') dataJson: string,
     @CurrentUser() user: any,
   ) {
-    // ── Parse JSON payload ─────────────────────────────────────────────────
+    // ── 1. Parse JSON payload ────────────────────────────────────────────────
     if (!dataJson) {
       throw new BadRequestException(
-        'Missing \'data\' field. Send exercise JSON as: data=\'{"tabType":"MAIN_EXERCISE",...}\'',
+        "Missing 'data' field. Send JSON as a text form-data field named 'data'.",
       );
     }
 
@@ -232,34 +216,92 @@ Optionally attach image and/or animation files.
       dto = JSON.parse(dataJson);
     } catch {
       throw new BadRequestException(
-        'Invalid JSON in "data" field. Make sure it is a valid JSON string.',
+        'Invalid JSON in "data" field. Ensure it is a valid JSON string.',
       );
     }
 
-    // ── Upload exercise image if provided ──────────────────────────────────
-    const imageFile = files?.file?.[0];
-    if (imageFile) {
-      const result = await this.cloudinaryService.uploadImageFromBuffer(
-        imageFile.buffer,
-        'exercises/images',
-        `exercise-img-${Date.now()}-${imageFile.originalname.replace(/[^a-z0-9.]/gi, '-')}`,
+    // ── 2. Extract uploaded files ─────────────────────────────────────────────
+    const rawFiles = files ?? {};
+    const imageFile = rawFiles.file?.[0];
+    const animFile = rawFiles.animationFile?.[0];
+
+    // Secondary type validation (fileFilter silently rejected, give clear HTTP error)
+    if (
+      imageFile &&
+      !/\.(jpg|jpeg|png|webp|gif)$/i.test(imageFile.originalname)
+    ) {
+      throw new BadRequestException(
+        `Invalid image type: ${imageFile.originalname}. Allowed: jpg, png, webp, gif`,
       );
-      // Override any URL the client sent — uploaded file takes precedence
-      dto.exerciseImageUrl = result.secure_url;
+    }
+    if (animFile && !/\.(gif|mp4|webm|mov)$/i.test(animFile.originalname)) {
+      throw new BadRequestException(
+        `Invalid animation type: ${animFile.originalname}. Allowed: gif, mp4, webm, mov`,
+      );
     }
 
-    // ── Upload animation file if provided ─────────────────────────────────
-    const animFile = files?.animationFile?.[0];
-    if (animFile) {
-      const isVideo = /\.(mp4|webm|mov)$/i.test(animFile.originalname);
-      const result = await this.cloudinaryService.uploadImageFromBuffer(
-        animFile.buffer,
-        isVideo ? 'exercises/videos' : 'exercises/animations',
-        `exercise-anim-${Date.now()}-${animFile.originalname.replace(/[^a-z0-9.]/gi, '-')}`,
+    // Enforce practical size limits AFTER multer buffers the file
+    const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB for static images
+    const MAX_VIDEO_BYTES = 20 * 1024 * 1024; // 20MB for animations/videos
+
+    if (imageFile && imageFile.size > MAX_IMAGE_BYTES) {
+      throw new BadRequestException(
+        `Image file too large: ${(imageFile.size / 1024 / 1024).toFixed(1)}MB. Max: 5MB`,
       );
-      dto.exerciseAnimationUrl = result.secure_url;
+    }
+    if (animFile && animFile.size > MAX_VIDEO_BYTES) {
+      throw new BadRequestException(
+        `Animation file too large: ${(animFile.size / 1024 / 1024).toFixed(1)}MB. Max: 20MB`,
+      );
     }
 
+    // ── 3. Upload files to Cloudinary in PARALLEL ─────────────────────────────
+    //
+    // ✅ KEY FIX: use uploadFileFromBuffer() not uploadImageFromBuffer()
+    //    uploadFileFromBuffer() auto-detects resource_type from filename:
+    //      .mp4/.webm/.mov → resource_type: 'video'   (was failing with 'image')
+    //      .jpg/.png/.gif  → resource_type: 'image'
+    //
+    // Priority: uploaded file > URL from JSON data
+    //
+    const [imageResult, animResult] = await Promise.all([
+      imageFile
+        ? this.cloudinaryService.uploadFileFromBuffer(
+            imageFile.buffer,
+            'exercises/images',
+            `exercise-img-${Date.now()}-${imageFile.originalname.replace(/[^a-z0-9.]/gi, '-')}`,
+            imageFile.originalname,
+          )
+        : Promise.resolve(null),
+
+      animFile
+        ? this.cloudinaryService.uploadFileFromBuffer(
+            animFile.buffer,
+            /\.(mp4|webm|mov)$/i.test(animFile.originalname)
+              ? 'exercises/videos'
+              : 'exercises/animations',
+            `exercise-anim-${Date.now()}-${animFile.originalname.replace(/[^a-z0-9.]/gi, '-')}`,
+            animFile.originalname,
+          )
+        : Promise.resolve(null),
+    ]);
+
+    // ── 4. Resolve final URLs ──────────────────────────────────────────────────
+    //
+    // Rule: uploaded file URL takes precedence over JSON URL.
+    // If no file uploaded, JSON URL passes through unchanged (already in dto).
+    //
+    if (imageResult) {
+      dto.exerciseImageUrl = imageResult.secure_url;
+    }
+    // If no file but URL was in JSON — dto.exerciseImageUrl is already set from JSON.parse ✅
+
+    if (animResult) {
+      dto.exerciseAnimationUrl = animResult.secure_url;
+    }
+    // If no file but URL was in JSON — dto.exerciseAnimationUrl is already set from JSON.parse ✅
+
+    // ── 5. Call service ───────────────────────────────────────────────────────
     return this.programsService.addExerciseToDay(id, dayId, dto, user.id);
   }
 

@@ -3,12 +3,11 @@
 import {
   Injectable, NotFoundException, ConflictException,
 } from '@nestjs/common';
-
+import { PrismaService } from 'src/prisma/prisma.service'; // ✅ FIX: use shared PrismaService
 import {
   CreateTrainingMethodDto, UpdateTrainingMethodDto, TrainingMethodQueryDto,
 } from './dto/training-method.dto';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class TrainingMethodsService {
