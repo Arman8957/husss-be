@@ -20,6 +20,7 @@ import { PartnerClinicModule } from './modules/content-management/partner-clinic
 import { EssentialContentModule } from './modules/content-management/essential-content/essential-content.module';
 import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
 import { SupplimentProductModule } from './modules/content-management/suppliment-product/suppliment-product.module';
+import { ProgrammeModule } from './modules/content-management/programme/programme.module';
 
 @Module({
   imports: [
@@ -50,7 +51,8 @@ import { SupplimentProductModule } from './modules/content-management/suppliment
     PartnerClinicModule,
     EssentialContentModule,
     CloudinaryModule,
-    SupplimentProductModule
+    SupplimentProductModule,
+    ProgrammeModule
   ],
   providers: [
 
