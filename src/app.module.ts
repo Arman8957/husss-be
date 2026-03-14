@@ -22,6 +22,7 @@ import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
 import { SupplimentProductModule } from './modules/content-management/suppliment-product/suppliment-product.module';
 import { ProgrammeModule } from './modules/content-management/programme/programme.module';
 import { CoachModule } from './modules/coach/Coach.module';
+import { UserModule } from './modules/content-management/user/user.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { CoachModule } from './modules/coach/Coach.module';
     SupplimentProductModule,
     ProgrammeModule,
     CoachModule,
+    UserModule,
   ],
   providers: [
 
