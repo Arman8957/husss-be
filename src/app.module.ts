@@ -21,6 +21,7 @@ import { EssentialContentModule } from './modules/content-management/essential-c
 import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
 import { SupplimentProductModule } from './modules/content-management/suppliment-product/suppliment-product.module';
 import { ProgrammeModule } from './modules/content-management/programme/programme.module';
+import { CoachModule } from './modules/coach/Coach.module';
 
 @Module({
   imports: [
@@ -52,7 +53,8 @@ import { ProgrammeModule } from './modules/content-management/programme/programm
     EssentialContentModule,
     CloudinaryModule,
     SupplimentProductModule,
-    ProgrammeModule
+    ProgrammeModule,
+    CoachModule,
   ],
   providers: [
 

@@ -1,6 +1,11 @@
 import {
-  Injectable, ConflictException, UnauthorizedException,
-  BadRequestException, ForbiddenException, NotFoundException, Logger,
+  Injectable,
+  ConflictException,
+  UnauthorizedException,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  Logger,
   InternalServerErrorException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -13,6 +18,7 @@ import { EmailService } from '../../common/email/email.service';
 import { TokenService } from './token.service';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
 import { RegisterDto } from './dto/register.dto';
 import { CoachRegisterDto } from './dto/coach-register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -20,69 +26,128 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { AppleLoginDto } from './dto/apple-login.dto';
 import { BootstrapSuperAdminDto } from './dto/bootstrap-super-admin.dto';
 import { AdminCreateUserDto } from './dto/admin0create-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
-// ─── Security constants ──────────────────────────────────────────────────────
-const SALT_ROUNDS           = 12;
-const MAX_LOGIN_ATTEMPTS    = 5;
-const LOCK_DURATION_MS      = 15 * 60 * 60 * 1000;           // 15 minutes
-const SESSION_EXPIRY_MS     = 30 * 24 * 60 * 60 * 1000; // 30 days
+// ─────────────────────────────────────────────────────────────────────────────
+// SECURITY CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SALT_ROUNDS          = 12;
+const MAX_LOGIN_ATTEMPTS   = 5;
+const LOCK_DURATION_MS     = 15 * 60 * 1000;            // ✅ 15 minutes (was bugged: 15 hours)
+const SESSION_EXPIRY_MS    = 30 * 24 * 60 * 60 * 1000;  // 30 days
 const MAX_SESSIONS_PER_USER = 5;
-const ACCESS_TOKEN_EXPIRY   = '15m';
-const REFRESH_TOKEN_EXPIRY  = '30d';
+const ACCESS_TOKEN_EXPIRY  = '15m';
+const REFRESH_TOKEN_EXPIRY = '30d';
 
-// ─── Reusable DB select ──────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES — imported from shared file so controller can reference them too
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { ActiveProfile, UserContext, SessionResponse, SafeUser } from '../../common/types/auth.types';
+
+interface FailRecord {
+  count:       number;
+  firstFailAt: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REUSABLE DB SELECT — includes profile relations for context building
+// ─────────────────────────────────────────────────────────────────────────────
+
 const USER_SAFE_SELECT = {
-  id: true, email: true, name: true, avatar: true,
-  role: true, permissions: true, isPremium: true,
-  premiumUntil: true, emailVerified: true, createdAt: true,
+  id:            true,
+  email:         true,
+  name:          true,
+  avatar:        true,
+  role:          true,
+  permissions:   true,
+  isPremium:     true,
+  premiumUntil:  true,
+  emailVerified: true,
+  createdAt:     true,
+  // For building UserContext on login/register/refresh
+  clientProfile: {
+    select: {
+      id:     true,
+      status: true,
+      coach: {
+        select: {
+          id:   true,
+          user: { select: { name: true } },
+        },
+      },
+    },
+  },
+  coachProfile: {
+    select: { id: true, isActive: true, isVerified: true },
+  },
 } as const;
 
-// ─── In-memory brute-force tracker ──────────────────────────────────────────
-interface FailRecord { count: number; firstFailAt: number }
+// In-memory brute-force tracker (zero DB queries — swap with Redis for multi-instance)
 const failMap = new Map<string, FailRecord>();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVICE
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly jwtService: JwtService,
-    private readonly config: ConfigService,
-    private readonly firebaseService: FirebaseService,
-    private readonly emailService: EmailService,
-    private readonly tokenService: TokenService,
-    private readonly auditService: AuditService,
+    private readonly prisma:            PrismaService,
+    private readonly jwtService:        JwtService,
+    private readonly cloudinaryService: CloudinaryService,
+    private readonly config:            ConfigService,
+    private readonly firebaseService:   FirebaseService,
+    private readonly emailService:      EmailService,
+    private readonly tokenService:      TokenService,
+    private readonly auditService:      AuditService,
   ) {}
 
   // ══════════════════════════════════════════════════════════════════════════
   // REGISTRATION
   // ══════════════════════════════════════════════════════════════════════════
 
+  /**
+   * Register a regular user (role = USER).
+   *
+   * Returns full session including `context` object.
+   * context.activeProfiles = ["EXERCISE_USER"] on first registration.
+   * If the user later accepts a coach invitation and refreshes token,
+   * context.activeProfiles becomes ["EXERCISE_USER", "TRAINEE"].
+   */
   async register(dto: RegisterDto, deviceInfo?: string, ipAddress?: string) {
     const { email, password, name, avatar, provider = AuthProvider.EMAIL } = dto;
     const normalizedEmail = email.toLowerCase().trim();
 
-    const existing = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
-    if (existing) throw new ConflictException('An account with this email already exists');
+    const existing = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+    if (existing) {
+      throw new ConflictException('An account with this email already exists');
+    }
 
     if (provider === AuthProvider.EMAIL && !password) {
       throw new BadRequestException('Password is required for email signup');
     }
 
     const passwordHash =
-      provider === AuthProvider.EMAIL ? await bcrypt.hash(password!, SALT_ROUNDS) : null;
+      provider === AuthProvider.EMAIL
+        ? await bcrypt.hash(password!, SALT_ROUNDS)
+        : null;
 
     const user = await this.prisma.user.create({
       data: {
-        email: normalizedEmail,
+        email:         normalizedEmail,
         passwordHash,
-        name: name?.trim() ?? normalizedEmail.split('@')[0],
+        name:          name?.trim() ?? normalizedEmail.split('@')[0],
         avatar,
         provider,
-        role: UserRole.USER,
+        role:          UserRole.USER,
         emailVerified: provider !== AuthProvider.EMAIL,
-        subscription: { create: { plan: 'FREE', status: 'ACTIVE' } },
+        subscription:  { create: { plan: 'FREE', status: 'ACTIVE' } },
       },
       select: USER_SAFE_SELECT,
     });
@@ -97,168 +162,260 @@ export class AuthService {
     }
 
     await this.auditService.log({
-      action: 'USER_REGISTERED', userId: user.id, ipAddress,
-      meta: { provider, email: normalizedEmail },
+      action:    'USER_REGISTERED',
+      userId:    user.id,
+      ipAddress,
+      meta:      { provider, email: normalizedEmail },
     });
 
-    return this.createSession(user.id, deviceInfo, ipAddress);
+    this.logger.log(`New user registered: ${normalizedEmail} via ${provider}`);
+    return this.buildSessionResponse(user, deviceInfo, ipAddress);
   }
 
- 
-  async registerCoach(dto: CoachRegisterDto, deviceInfo?: string, ipAddress?: string) {
+  /**
+   * Register a coach account (role = COACH).
+   *
+   * user.isActive = true  → coach CAN log in immediately
+   * coachProfile.isActive = false → coach FEATURES locked until admin approves
+   *
+   * context.activeProfiles = ["COACH"] on registration.
+   * Coach will see a "Pending Approval" screen until admin approves.
+   */
+  async registerCoach(
+    dto:        CoachRegisterDto,
+    deviceInfo?: string,
+    ipAddress?:  string,
+  ) {
     const normalizedEmail = dto.email.toLowerCase().trim();
 
-    const existing = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
-    if (existing) throw new ConflictException('An account with this email already exists');
+    const existing = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+    if (existing) {
+      throw new ConflictException('An account with this email already exists');
+    }
 
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
 
     const user = await this.prisma.user.create({
       data: {
-        email: normalizedEmail,
+        email:         normalizedEmail,
         passwordHash,
-        name: dto.name.trim(),
-        provider: AuthProvider.EMAIL,
-        role: UserRole.COACH,
+        name:          dto.name.trim(),
+        provider:      AuthProvider.EMAIL,
+        role:          UserRole.COACH,
         emailVerified: false,
-        isActive: true,                // account is active — coach can log in
-        subscription: { create: { plan: 'FREE', status: 'ACTIVE' } },
+        isActive:      true,
+        subscription:  { create: { plan: 'FREE', status: 'ACTIVE' } },
         coachProfile: {
           create: {
-            bio: dto.bio,
-            specialties: dto.specialties ?? [],
+            bio:            dto.bio,
+            specialties:    dto.specialties    ?? [],
             certifications: dto.certifications ?? [],
-            gymName: dto.gymName,
-            gymLocation: dto.gymLocation,
-            isVerified: false,
-            isActive: false,           // coach FEATURES locked until admin approves
+            gymName:        dto.gymName,
+            gymLocation:    dto.gymLocation,
+            isVerified:     false,
+            isActive:       false, // locked until admin approves
           },
         },
       },
       select: USER_SAFE_SELECT,
     });
 
-    // Send email verification to coach
     const verifyToken = this.tokenService.generateVerificationToken(user.id);
-    await this.emailService.sendVerificationEmail(user.email, user.name ?? 'Coach', verifyToken);
+    await this.emailService.sendVerificationEmail(
+      user.email,
+      user.name ?? 'Coach',
+      verifyToken,
+    );
 
-    // Notify all admins that a new coach is pending review
     await this.notifyAdminsNewCoach(user.email, user.name ?? 'Coach');
 
     await this.auditService.log({
-      action: 'COACH_REGISTERED', userId: user.id, ipAddress,
-      meta: { email: normalizedEmail, gymName: dto.gymName },
+      action:    'COACH_REGISTERED',
+      userId:    user.id,
+      ipAddress,
+      meta:      { email: normalizedEmail, gymName: dto.gymName },
     });
 
+    this.logger.log(`New coach registered: ${normalizedEmail}, gym: ${dto.gymName}`);
+    return this.buildSessionResponse(user, deviceInfo, ipAddress);
+  }
 
-    return this.createSession(user.id, deviceInfo, ipAddress);
+  // ══════════════════════════════════════════════════════════════════════════
+  // PROFILE
+  // ══════════════════════════════════════════════════════════════════════════
+
+  async updateProfile(
+    userId:      string,
+    dto:         UpdateProfileDto,
+    avatarFile?: Express.Multer.File,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (dto.phoneNumber !== undefined && dto.phoneNumber !== '') {
+      const phoneRegex = /^\+?[0-9\s\-().]{7,20}$/;
+      if (!phoneRegex.test(dto.phoneNumber.trim())) {
+        throw new BadRequestException(
+          'phoneNumber must be a valid phone number (e.g. 01712345678 or +8801712345678)',
+        );
+      }
+    }
+
+    let avatarUrl: string | undefined;
+    if (avatarFile) {
+      const result = (await this.cloudinaryService.uploadImageFromBuffer(
+        avatarFile.buffer,
+        'avatars',
+        `avatar_${userId}_${Date.now()}`,
+      )) as { secure_url: string };
+      avatarUrl = result.secure_url;
+    }
+
+    const updateData: Record<string, any> = {};
+    if (dto.name        !== undefined) updateData.name        = dto.name.trim();
+    if (dto.phoneNumber !== undefined) updateData.phoneNumber = dto.phoneNumber.trim();
+    if (avatarUrl       !== undefined) updateData.avatar      = avatarUrl;
+
+    const PROFILE_SELECT = {
+      id:            true,
+      email:         true,
+      name:          true,
+      avatar:        true,
+      phoneNumber:   true,
+      role:          true,
+      isPremium:     true,
+      premiumUntil:  true,
+      emailVerified: true,
+      createdAt:     true,
+    };
+
+    if (Object.keys(updateData).length === 0) {
+      return this.prisma.user.findUnique({ where: { id: userId }, select: PROFILE_SELECT });
+    }
+
+    const updated = await this.prisma.user.update({
+      where:  { id: userId },
+      data:   updateData,
+      select: PROFILE_SELECT,
+    });
+
+    await this.auditService.log({
+      action: 'PROFILE_UPDATED',
+      userId,
+      meta:   { updatedFields: Object.keys(updateData), avatarUpdated: !!avatarUrl },
+    });
+
+    return updated;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
   // LOGIN
   // ══════════════════════════════════════════════════════════════════════════
 
- async login(dto: LoginDto, deviceInfo?: string, ipAddress?: string) {
-  const normalizedEmail = dto.email.toLowerCase().trim();
+  /**
+   * Single login endpoint for ALL user types:
+   *   - Regular user     → context.activeProfiles = ["EXERCISE_USER"]
+   *   - User with coach  → context.activeProfiles = ["EXERCISE_USER", "TRAINEE"]
+   *   - Coach            → context.activeProfiles = ["COACH"]
+   *   - Admin            → context.activeProfiles = ["ADMIN"]
+   *   - Super Admin      → context.activeProfiles = ["SUPER_ADMIN", "ADMIN"]
+   *
+   * Frontend uses context.activeProfiles to render the correct navigation.
+   * No second login needed — one token works for all dashboards.
+   */
+  async login(dto: LoginDto, deviceInfo?: string, ipAddress?: string) {
+    const normalizedEmail = dto.email.toLowerCase().trim();
 
-  try {
-    const user = await this.prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    });
-
- 
-    if (!user) {
-      await bcrypt.hash(dto.password, SALT_ROUNDS);
-      throw new UnauthorizedException({
-        message: 'Invalid credentials',
-        errorCode: 'INVALID_CREDENTIALS',
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { email: normalizedEmail },
       });
-    }
 
+      // Timing-safe: always hash to prevent email enumeration via timing
+      if (!user) {
+        await bcrypt.hash(dto.password, SALT_ROUNDS);
+        throw new UnauthorizedException({
+          message:   'Invalid credentials',
+          errorCode: 'INVALID_CREDENTIALS',
+        });
+      }
 
-    this.checkAccountLock(user.id);
+      // Brute-force gate (synchronous — zero DB queries)
+      this.checkAccountLock(user.id);
 
-   
-    if (!user.isActive) {
-      throw new UnauthorizedException({
-        message: 'Account is deactivated. Please contact support.',
-        errorCode: 'ACCOUNT_DEACTIVATED',
+      if (!user.isActive) {
+        throw new UnauthorizedException({
+          message:   'Account is deactivated. Please contact support.',
+          errorCode: 'ACCOUNT_DEACTIVATED',
+        });
+      }
+
+      if (user.provider !== AuthProvider.EMAIL) {
+        // Timing-safe: hash even for wrong provider
+        await bcrypt.hash(dto.password, SALT_ROUNDS);
+        throw new UnauthorizedException({
+          message:   `Please sign in with ${user.provider}`,
+          errorCode: 'WRONG_PROVIDER',
+        });
+      }
+
+      if (!user.passwordHash) {
+        throw new UnauthorizedException({
+          message:   'Invalid credentials',
+          errorCode: 'INVALID_CREDENTIALS',
+        });
+      }
+
+      const isValid = await bcrypt.compare(dto.password, user.passwordHash);
+
+      if (!isValid) {
+        this.recordFailedLogin(user.id);
+        await this.auditService.log({
+          action: 'LOGIN_FAILED',
+          userId: user.id,
+          ipAddress,
+          meta:   { reason: 'invalid_credentials' },
+        });
+        throw new UnauthorizedException({
+          message:   'Invalid credentials',
+          errorCode: 'INVALID_CREDENTIALS',
+        });
+      }
+
+      // Success — clear brute-force counter
+      this.clearFailedLoginAttempts(user.id);
+
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data:  { lastLoginAt: new Date(), lastActiveDate: new Date() },
       });
-    }
-
-    // 🔐 Prevent provider mismatch enumeration
-    if (user.provider !== AuthProvider.EMAIL) {
-      await bcrypt.hash(dto.password, SALT_ROUNDS);
-      throw new UnauthorizedException({
-        message: 'Invalid credentials',
-        errorCode: 'INVALID_CREDENTIALS',
-      });
-    }
-
-    // 🔐 Password not configured
-    if (!user.passwordHash) {
-      throw new UnauthorizedException({
-        message: 'Invalid credentials',
-        errorCode: 'INVALID_CREDENTIALS',
-      });
-    }
-
-    const isValid = await bcrypt.compare(dto.password, user.passwordHash);
-
-    if (!isValid) {
-      this.recordFailedLogin(user.id);
 
       await this.auditService.log({
-        action: 'LOGIN_FAILED',
+        action: 'USER_LOGIN',
         userId: user.id,
         ipAddress,
-        meta: { reason: 'invalid_credentials' },
+        meta:   { provider: 'EMAIL', deviceInfo },
       });
 
-      throw new UnauthorizedException({
-        message: 'Invalid credentials',
-        errorCode: 'INVALID_CREDENTIALS',
+      this.logger.log(`Login success: ${normalizedEmail} | role: ${user.role}`);
+      return this.buildSessionResponse(user.id, deviceInfo, ipAddress);
+
+    } catch (error) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
+      this.logger.error('Login failed unexpectedly', { email: normalizedEmail, error });
+      throw new InternalServerErrorException({
+        message:   'Login failed. Please try again later.',
+        errorCode: 'LOGIN_FAILED',
       });
     }
-
-   
-    this.clearFailedLoginAttempts(user.id);
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        lastLoginAt: new Date(),
-        lastActiveDate: new Date(),
-      },
-    });
-
-    await this.auditService.log({
-      action: 'USER_LOGIN',
-      userId: user.id,
-      ipAddress,
-      meta: { provider: 'EMAIL', deviceInfo },
-    });
-
-    return this.createSession(user.id, deviceInfo, ipAddress);
-
-  } catch (error) {
-  
-    if (error instanceof UnauthorizedException) {
-      throw error;
-    }
-
-   
-    this.logger.error('Login failed unexpectedly', {
-      email: normalizedEmail,
-      error,
-    });
-
-    throw new InternalServerErrorException({
-      message: 'Login failed. Please try again later.',
-      errorCode: 'LOGIN_FAILED',
-    });
   }
-}
 
   async googleLogin(dto: GoogleLoginDto) {
     let decoded: any;
@@ -268,13 +425,15 @@ export class AuthService {
       throw new UnauthorizedException(`Google authentication failed: ${err.message}`);
     }
 
-    if (!decoded.email) throw new BadRequestException('Google account must have an email');
+    if (!decoded.email) {
+      throw new BadRequestException('Google account must have an email');
+    }
 
     let user = await this.prisma.user.findFirst({
       where: {
         OR: [
-          { googleId: decoded.uid },
-          { email: decoded.email },
+          { googleId:    decoded.uid },
+          { email:       decoded.email },
           ...(decoded.uid ? [{ firebaseUid: decoded.uid } as any] : []),
         ],
       },
@@ -285,43 +444,50 @@ export class AuthService {
       user = await this.prisma.user.update({
         where: { id: user.id },
         data: {
-          googleId: decoded.uid, firebaseUid: decoded.uid,
+          googleId:      decoded.uid,
+          firebaseUid:   decoded.uid,
           emailVerified: true,
-          avatar: decoded.picture ?? user.avatar,
-          name: user.name ?? decoded.name,
-          lastLoginAt: new Date(), lastActiveDate: new Date(),
+          avatar:        decoded.picture ?? user.avatar,
+          name:          user.name ?? decoded.name,
+          lastLoginAt:   new Date(),
+          lastActiveDate: new Date(),
         },
       });
     } else {
       user = await this.prisma.user.create({
         data: {
-          email: decoded.email, googleId: decoded.uid, firebaseUid: decoded.uid,
-          name: decoded.name ?? decoded.email.split('@')[0],
-          avatar: decoded.picture,
-          provider: AuthProvider.GOOGLE,
-          role: UserRole.USER, emailVerified: true,
-          subscription: { create: { plan: 'FREE', status: 'ACTIVE' } },
+          email:         decoded.email,
+          googleId:      decoded.uid,
+          firebaseUid:   decoded.uid,
+          name:          decoded.name ?? decoded.email.split('@')[0],
+          avatar:        decoded.picture,
+          provider:      AuthProvider.GOOGLE,
+          role:          UserRole.USER,
+          emailVerified: true,
+          subscription:  { create: { plan: 'FREE', status: 'ACTIVE' } },
         },
       });
     }
 
     await this.auditService.log({
-      action: 'USER_LOGIN', userId: user.id, ipAddress: dto.ipAddress,
-      meta: { provider: 'GOOGLE' },
+      action:    'USER_LOGIN',
+      userId:    user.id,
+      ipAddress: dto.ipAddress,
+      meta:      { provider: 'GOOGLE' },
     });
 
-    return this.createSession(user.id, dto.deviceInfo, dto.ipAddress);
+    return this.buildSessionResponse(user.id, dto.deviceInfo, dto.ipAddress);
   }
 
   async appleLogin(dto: AppleLoginDto) {
-    let email = dto.email;
+    let email         = dto.email;
     let appleUserId: string | null = null;
 
     if (!email && dto.user) {
       try {
         const parsed = JSON.parse(dto.user);
-        email = parsed.email ?? null;
-        appleUserId = parsed.userId ?? null;
+        email        = parsed.email   ?? null;
+        appleUserId  = parsed.userId  ?? null;
       } catch {
         this.logger.warn('Failed to parse Apple user info JSON');
       }
@@ -331,7 +497,10 @@ export class AuthService {
 
     if (!appleUserId && dto.identityToken) {
       appleUserId = crypto
-        .createHash('sha256').update(dto.identityToken).digest('hex').slice(0, 28);
+        .createHash('sha256')
+        .update(dto.identityToken)
+        .digest('hex')
+        .slice(0, 28);
     }
 
     let user = await this.prisma.user.findFirst({
@@ -349,7 +518,9 @@ export class AuthService {
         where: { id: user.id },
         data: {
           ...(appleUserId ? { appleId: appleUserId } : {}),
-          emailVerified: true, lastLoginAt: new Date(), lastActiveDate: new Date(),
+          emailVerified: true,
+          lastLoginAt:   new Date(),
+          lastActiveDate: new Date(),
         },
       });
     } else {
@@ -357,19 +528,23 @@ export class AuthService {
         data: {
           email,
           ...(appleUserId ? { appleId: appleUserId } : {}),
-          provider: AuthProvider.APPLE, role: UserRole.USER,
-          emailVerified: true, name: email.split('@')[0],
-          subscription: { create: { plan: 'FREE', status: 'ACTIVE' } },
+          provider:      AuthProvider.APPLE,
+          role:          UserRole.USER,
+          emailVerified: true,
+          name:          email.split('@')[0],
+          subscription:  { create: { plan: 'FREE', status: 'ACTIVE' } },
         },
       });
     }
 
     await this.auditService.log({
-      action: 'USER_LOGIN', userId: user.id, ipAddress: dto.ipAddress,
-      meta: { provider: 'APPLE' },
+      action:    'USER_LOGIN',
+      userId:    user.id,
+      ipAddress: dto.ipAddress,
+      meta:      { provider: 'APPLE' },
     });
 
-    return this.createSession(user.id, dto.deviceInfo, dto.ipAddress);
+    return this.buildSessionResponse(user.id, dto.deviceInfo, dto.ipAddress);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -377,7 +552,9 @@ export class AuthService {
   // ══════════════════════════════════════════════════════════════════════════
 
   async logout(sessionId: string, userId: string) {
-    await this.prisma.session.deleteMany({ where: { id: sessionId, userId } }).catch(() => {});
+    await this.prisma.session
+      .deleteMany({ where: { id: sessionId, userId } })
+      .catch(() => {});
     return { message: 'Logged out successfully' };
   }
 
@@ -389,26 +566,61 @@ export class AuthService {
 
   async getMySessions(userId: string) {
     return this.prisma.session.findMany({
-      where: { userId, expiresAt: { gt: new Date() } },
-      select: {
-        id: true, deviceInfo: true, ipAddress: true,
-        lastActiveAt: true, createdAt: true, expiresAt: true,
+      where:   { userId, expiresAt: { gt: new Date() } },
+      select:  {
+        id:           true,
+        deviceInfo:   true,
+        ipAddress:    true,
+        lastActiveAt: true,
+        createdAt:    true,
+        expiresAt:    true,
       },
       orderBy: { lastActiveAt: 'desc' },
     });
   }
 
   async revokeSession(userId: string, sessionId: string) {
-    const session = await this.prisma.session.findFirst({ where: { id: sessionId, userId } });
+    const session = await this.prisma.session.findFirst({
+      where: { id: sessionId, userId },
+    });
     if (!session) throw new NotFoundException('Session not found');
     await this.prisma.session.delete({ where: { id: sessionId } });
     return { message: 'Session revoked successfully' };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // CONTEXT REFRESH
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * GET /auth/me/context
+   * Returns the current user's live context from DB.
+   *
+   * Use this after the user accepts a coach invitation so the frontend
+   * can update its navigation without requiring a full logout/login.
+   *
+   * Example: User accepts invitation → call GET /auth/me/context
+   * → response.context.activeProfiles now includes "TRAINEE"
+   * → frontend shows the "My Coach" tab
+   */
+  async getMyContext(userId: string): Promise<UserContext> {
+    const user = await this.prisma.user.findUnique({
+      where:  { id: userId },
+      select: USER_SAFE_SELECT,
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return this.buildUserContext(user);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // TOKEN
   // ══════════════════════════════════════════════════════════════════════════
 
+  /**
+   * Refresh access token using refresh token.
+   * Also returns updated `context` — critical because user may have accepted
+   * a coach invitation since last login (context.isTrainee may have changed).
+   */
   async refreshToken(refreshToken: string) {
     let payload: any;
     try {
@@ -419,27 +631,42 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    if (payload.type !== 'refresh') throw new UnauthorizedException('Invalid token type');
+    if (payload.type !== 'refresh') {
+      throw new UnauthorizedException('Invalid token type');
+    }
 
     const session = await this.prisma.session.findUnique({
-      where: { id: payload.sessionId },
+      where:   { id: payload.sessionId },
       include: { user: true },
     });
 
     if (!session || session.userId !== payload.sub || session.expiresAt < new Date()) {
       throw new UnauthorizedException('Session expired. Please log in again.');
     }
-    if (!session.user.isActive) throw new UnauthorizedException('Account has been deactivated');
+
+    if (!session.user.isActive) {
+      throw new UnauthorizedException('Account has been deactivated');
+    }
 
     await this.prisma.session.update({
       where: { id: session.id },
-      data: { lastActiveAt: new Date() },
+      data:  { lastActiveAt: new Date() },
     });
 
+    // Re-fetch full user with profile relations to get fresh context
+    const fullUser = await this.prisma.user.findUnique({
+      where:  { id: session.user.id },
+      select: USER_SAFE_SELECT,
+    });
+    if (!fullUser) throw new UnauthorizedException('User not found');
+
+    const context = this.buildUserContext(fullUser);
+
     return {
-      accessToken:  this.generateAccessToken(session.user, session.id),
-      refreshToken: this.generateRefreshToken(session.user.id, session.id),
-      user:         this.sanitizeUser(session.user),
+      accessToken:  this.generateAccessToken(fullUser, session.id, context),
+      refreshToken: this.generateRefreshToken(fullUser.id, session.id),
+      user:         this.sanitizeUser(fullUser),
+      context,
     };
   }
 
@@ -452,7 +679,9 @@ export class AuthService {
       where: { email: email.toLowerCase().trim() },
     });
     if (!user || user.emailVerified) {
-      return { message: 'If an unverified account exists with this email, a verification link has been sent' };
+      return {
+        message: 'If an unverified account exists with this email, a verification link has been sent',
+      };
     }
     const token = this.tokenService.generateVerificationToken(user.id);
     await this.emailService.sendVerificationEmail(user.email, user.name ?? 'User', token);
@@ -468,7 +697,10 @@ export class AuthService {
     if (!user) throw new BadRequestException('User not found');
     if (user.emailVerified) return { message: 'Email already verified' };
 
-    await this.prisma.user.update({ where: { id: result.userId }, data: { emailVerified: true } });
+    await this.prisma.user.update({
+      where: { id: result.userId },
+      data:  { emailVerified: true },
+    });
     await this.emailService.sendWelcomeEmail(user.email, user.name ?? 'User');
     return { message: 'Email verified successfully' };
   }
@@ -482,7 +714,9 @@ export class AuthService {
       where: { email: email.toLowerCase().trim() },
     });
     if (!user) {
-      return { message: 'If an account exists with this email, reset instructions have been sent' };
+      return {
+        message: 'If an account exists with this email, reset instructions have been sent',
+      };
     }
     if (user.provider !== AuthProvider.EMAIL) {
       throw new BadRequestException(
@@ -533,34 +767,16 @@ export class AuthService {
   // ══════════════════════════════════════════════════════════════════════════
   // SUPER ADMIN BOOTSTRAP
   //
-  // Full flow step by step:
+  //   1. Add to .env:  SUPERADMIN_BOOTSTRAP_KEY=<random 32-byte hex>
+  //      Generate:     node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   //
-  //   1. In your .env file, add:
-  //        SUPERADMIN_BOOTSTRAP_KEY=replace-with-a-long-random-secret
-  //      You can generate one with:
-  //        node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  //   2. Call once:    POST /api/v1/auth/super-admin/bootstrap
+  //                    { "email": "...", "password": "...", "secretKey": "..." }
   //
-  //   2. Start your server, then call:
-  //        POST /api/v1/auth/super-admin/bootstrap
-  //        {
-  //          "email": "superadmin@yourapp.com",
-  //          "password": "SuperSecurePass123!",
-  //          "secretKey": "replace-with-a-long-random-secret"   ← same as .env
-  //        }
+  //   3. After success: REMOVE SUPERADMIN_BOOTSTRAP_KEY from .env permanently.
+  //      The endpoint returns 403 when the env var is not set.
   //
-  //   3. The service:
-  //        a. Compares secretKey to SUPERADMIN_BOOTSTRAP_KEY with timing-safe compare
-  //        b. Checks no super admin already exists (throws 409 if one does)
-  //        c. Creates the user with role=ADMIN and permissions=['SUPER_ADMIN', ...]
-  //        d. Returns { message, userId, email }
-  //
-  //   4. After success:
-  //        - Remove SUPERADMIN_BOOTSTRAP_KEY from .env entirely
-  //        - The endpoint will return 403 from now on (disabled permanently)
-  //        - The super admin logs in via the normal POST /auth/login endpoint
-  //
-  //   NOTE: This does NOT return tokens. The super admin must log in separately
-  //   via POST /auth/login after bootstrapping.
+  //   4. Super admin logs in via normal POST /auth/login.
   // ══════════════════════════════════════════════════════════════════════════
 
   async bootstrapSuperAdmin(dto: BootstrapSuperAdminDto) {
@@ -569,7 +785,6 @@ export class AuthService {
       throw new ForbiddenException('Super admin bootstrapping is disabled');
     }
 
-    // Timing-safe comparison — prevents timing attacks on the secret key
     const keyBuffer      = Buffer.from(dto.secretKey);
     const expectedBuffer = Buffer.from(bootstrapKey);
     if (
@@ -579,7 +794,6 @@ export class AuthService {
       throw new ForbiddenException('Invalid bootstrap key');
     }
 
-    // Only one super admin can ever exist
     const existing = await this.prisma.user.findFirst({
       where: { permissions: { has: 'SUPER_ADMIN' } },
     });
@@ -589,15 +803,15 @@ export class AuthService {
 
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email.toLowerCase().trim(),
+        email:         dto.email.toLowerCase().trim(),
         passwordHash,
-        name: 'Super Admin',
-        provider: AuthProvider.EMAIL,
-        role: UserRole.ADMIN,
+        name:          'Super Admin',
+        provider:      AuthProvider.EMAIL,
+        role:          UserRole.ADMIN,
         emailVerified: true,
-        isActive: true,
+        isActive:      true,
         permissions: [
-          'SUPER_ADMIN',          // gates assertSuperAdmin() checks
+          'SUPER_ADMIN',
           'CREATE_USERS',
           'DELETE_USERS',
           'MANAGE_ROLES',
@@ -616,13 +830,13 @@ export class AuthService {
 
     return {
       message: 'Super admin created. Now remove SUPERADMIN_BOOTSTRAP_KEY from your .env to disable this endpoint.',
-      userId: user.id,
-      email: user.email,
+      userId:  user.id,
+      email:   user.email,
     };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ADMIN — User Management
+  // ADMIN — USER MANAGEMENT
   // ══════════════════════════════════════════════════════════════════════════
 
   async adminCreateUser(dto: AdminCreateUserDto, createdByAdminId: string) {
@@ -636,16 +850,24 @@ export class AuthService {
 
     const user = await this.prisma.user.create({
       data: {
-        email: normalizedEmail, name: dto.name,
-        passwordHash, provider: AuthProvider.EMAIL,
-        role: dto.role ?? UserRole.USER,
+        email:         normalizedEmail,
+        name:          dto.name,
+        passwordHash,
+        provider:      AuthProvider.EMAIL,
+        role:          dto.role ?? UserRole.USER,
         emailVerified: dto.emailVerified ?? true,
-        isActive: true, permissions: dto.permissions ?? [],
-        subscription: { create: { plan: 'FREE', status: 'ACTIVE' } },
+        isActive:      true,
+        permissions:   dto.permissions ?? [],
+        subscription:  { create: { plan: 'FREE', status: 'ACTIVE' } },
         ...(dto.role === UserRole.COACH
           ? {
               coachProfile: {
-                create: { specialties: [], certifications: [], isVerified: true, isActive: true },
+                create: {
+                  specialties:    [],
+                  certifications: [],
+                  isVerified:     true,
+                  isActive:       true,
+                },
               },
             }
           : {}),
@@ -655,13 +877,17 @@ export class AuthService {
 
     if (dto.password) {
       await this.emailService.sendAdminCreatedAccountEmail(
-        user.email, user.name ?? 'User', dto.password,
+        user.email,
+        user.name ?? 'User',
+        dto.password,
       );
     }
 
     await this.auditService.log({
-      action: 'ADMIN_CREATED_USER', userId: createdByAdminId, targetId: user.id,
-      meta: { role: dto.role, email: normalizedEmail },
+      action:   'ADMIN_CREATED_USER',
+      userId:   createdByAdminId,
+      targetId: user.id,
+      meta:     { role: dto.role, email: normalizedEmail },
     });
 
     return user;
@@ -678,8 +904,10 @@ export class AuthService {
 
     await this.prisma.user.delete({ where: { id: targetUserId } });
     await this.auditService.log({
-      action: 'ADMIN_DELETED_USER', userId: adminId, targetId: targetUserId,
-      meta: { deletedEmail: target.email, deletedRole: target.role },
+      action:   'ADMIN_DELETED_USER',
+      userId:   adminId,
+      targetId: targetUserId,
+      meta:     { deletedEmail: target.email, deletedRole: target.role },
     });
 
     return { message: 'User permanently deleted' };
@@ -689,7 +917,7 @@ export class AuthService {
     if (newRole === UserRole.ADMIN) await this.assertSuperAdmin(adminId);
 
     const target = await this.prisma.user.findUnique({
-      where: { id: targetUserId },
+      where:   { id: targetUserId },
       include: { coachProfile: true },
     });
     if (!target) throw new NotFoundException('User not found');
@@ -704,7 +932,12 @@ export class AuthService {
         ...(newRole === UserRole.COACH && !target.coachProfile
           ? {
               coachProfile: {
-                create: { specialties: [], certifications: [], isVerified: true, isActive: true },
+                create: {
+                  specialties:    [],
+                  certifications: [],
+                  isVerified:     true,
+                  isActive:       true,
+                },
               },
             }
           : {}),
@@ -713,8 +946,10 @@ export class AuthService {
     });
 
     await this.auditService.log({
-      action: 'ADMIN_ROLE_CHANGED', userId: adminId, targetId: targetUserId,
-      meta: { from: target.role, to: newRole },
+      action:   'ADMIN_ROLE_CHANGED',
+      userId:   adminId,
+      targetId: targetUserId,
+      meta:     { from: target.role, to: newRole },
     });
 
     return user;
@@ -729,12 +964,15 @@ export class AuthService {
 
     await this.prisma.$transaction([
       this.prisma.user.update({ where: { id: targetUserId }, data: { isActive } }),
-      ...(isActive ? [] : [this.prisma.session.deleteMany({ where: { userId: targetUserId } })]),
+      ...(isActive
+        ? []
+        : [this.prisma.session.deleteMany({ where: { userId: targetUserId } })]),
     ]);
 
     await this.auditService.log({
-      action: isActive ? 'ADMIN_USER_ACTIVATED' : 'ADMIN_USER_DEACTIVATED',
-      userId: adminId, targetId: targetUserId,
+      action:   isActive ? 'ADMIN_USER_ACTIVATED' : 'ADMIN_USER_DEACTIVATED',
+      userId:   adminId,
+      targetId: targetUserId,
     });
 
     return { message: `User ${isActive ? 'activated' : 'deactivated'} successfully` };
@@ -742,7 +980,7 @@ export class AuthService {
 
   async adminApproveCoach(coachUserId: string, adminId: string, approved: boolean) {
     const coach = await this.prisma.user.findUnique({
-      where: { id: coachUserId },
+      where:   { id: coachUserId },
       include: { coachProfile: true },
     });
     if (!coach || coach.role !== UserRole.COACH) throw new NotFoundException('Coach not found');
@@ -750,13 +988,14 @@ export class AuthService {
 
     await this.prisma.coachProfile.update({
       where: { userId: coachUserId },
-      data: { isVerified: approved, isActive: approved },
+      data:  { isVerified: approved, isActive: approved },
     });
 
     await this.emailService.sendCoachApprovalEmail(coach.email, coach.name ?? 'Coach', approved);
     await this.auditService.log({
-      action: approved ? 'ADMIN_COACH_APPROVED' : 'ADMIN_COACH_REJECTED',
-      userId: adminId, targetId: coachUserId,
+      action:   approved ? 'ADMIN_COACH_APPROVED' : 'ADMIN_COACH_REJECTED',
+      userId:   adminId,
+      targetId: coachUserId,
     });
 
     return { message: `Coach ${approved ? 'approved and activated' : 'rejected'} successfully` };
@@ -775,46 +1014,82 @@ export class AuthService {
     }
 
     const updated = await this.prisma.user.update({
-      where: { id: targetUserId },
-      data: { permissions },
+      where:  { id: targetUserId },
+      data:   { permissions },
       select: USER_SAFE_SELECT,
     });
 
     await this.auditService.log({
-      action: 'ADMIN_PERMISSIONS_UPDATED', userId: adminId, targetId: targetUserId,
-      meta: { permissions },
+      action:   'ADMIN_PERMISSIONS_UPDATED',
+      userId:   adminId,
+      targetId: targetUserId,
+      meta:     { permissions },
     });
 
     return updated;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // JWT STRATEGY — called by JwtStrategy.validate()
+  // JWT STRATEGY — called by JwtStrategy.validate() on every request
   // ══════════════════════════════════════════════════════════════════════════
 
+  /**
+   * Runs on EVERY authenticated request — kept lean (no profile joins here).
+   * Context claims (isTrainee, clientProfileId, activeProfiles) are read
+   * directly from the JWT payload — no extra DB queries needed.
+   */
   async validateUser(payload: any) {
     const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
+      where:  { id: payload.sub },
       select: {
-        id: true, email: true, name: true, avatar: true,
-        role: true, permissions: true, isPremium: true,
-        premiumUntil: true, isActive: true, emailVerified: true,
+        id:            true,
+        email:         true,
+        name:          true,
+        avatar:        true,
+        role:          true,
+        permissions:   true,
+        isPremium:     true,
+        premiumUntil:  true,
+        isActive:      true,
+        emailVerified: true,
       },
     });
+
     if (!user || !user.isActive) return null;
-    return { ...user, sessionId: payload.sessionId };
+
+    return {
+      ...user,
+      sessionId:       payload.sessionId,
+      // Context claims from JWT — re-attached here so all guards/services
+      // can access them via @CurrentUser() without extra DB queries
+      isTrainee:       payload.isTrainee       ?? false,
+      clientProfileId: payload.clientProfileId ?? null,
+      activeProfiles:  payload.activeProfiles  ?? [],
+    };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
   // PRIVATE HELPERS
   // ══════════════════════════════════════════════════════════════════════════
 
-  private async createSession(userId: string, deviceInfo?: string, ipAddress?: string) {
-    // Enforce max sessions per user — evict the oldest if at limit
+  /**
+   * Core method called by register, login, googleLogin, appleLogin.
+   * Accepts either a userId (string) or a full user object.
+   * Fetches full user with profile relations, builds context, creates session.
+   */
+  private async buildSessionResponse(
+    userOrId:   string | any,
+    deviceInfo?: string,
+    ipAddress?:  string,
+  ) {
+    const userId = typeof userOrId === 'string' ? userOrId : userOrId.id;
+
+    // Enforce max sessions — evict oldest if at limit
     const sessionCount = await this.prisma.session.count({ where: { userId } });
     if (sessionCount >= MAX_SESSIONS_PER_USER) {
       const oldest = await this.prisma.session.findFirst({
-        where: { userId }, orderBy: { lastActiveAt: 'asc' },
+        where:   { userId },
+        orderBy: { lastActiveAt: 'asc' },
       });
       if (oldest) await this.prisma.session.delete({ where: { id: oldest.id } });
     }
@@ -822,30 +1097,81 @@ export class AuthService {
     const session = await this.prisma.session.create({
       data: {
         userId,
-        token: crypto.randomBytes(32).toString('hex'),
-        deviceInfo, ipAddress,
+        token:     crypto.randomBytes(32).toString('hex'),
+        deviceInfo,
+        ipAddress,
         expiresAt: new Date(Date.now() + SESSION_EXPIRY_MS),
       },
     });
 
+    // Always fetch fresh from DB with full profile relations
     const user = await this.prisma.user.findUnique({
-      where: { id: userId }, select: USER_SAFE_SELECT,
+      where:  { id: userId },
+      select: USER_SAFE_SELECT,
     });
     if (!user) throw new UnauthorizedException('User not found');
 
+    const context = this.buildUserContext(user);
+
     return {
-      accessToken:  this.generateAccessToken(user, session.id),
+      accessToken:  this.generateAccessToken(user, session.id, context),
       refreshToken: this.generateRefreshToken(userId, session.id),
       sessionId:    session.id,
-      user,
+      user:         this.sanitizeUser(user),
+      context,
     };
   }
 
-  private generateAccessToken(user: any, sessionId: string): string {
+  /**
+   * Derives the UserContext from a user record with profile relations.
+   * Called on login, register, refresh, and GET /auth/me/context.
+   *
+   * This is the single source of truth for all context decisions.
+   * Frontend reads context.activeProfiles to build navigation.
+   */
+  private buildUserContext(user: any): UserContext {
+    const isSuperAdmin   = user.permissions?.includes('SUPER_ADMIN') ?? false;
+    const isAdmin        = user.role === 'ADMIN' || user.role === 'MODERATOR';
+    const isCoach        = user.role === 'COACH';
+    const isExerciseUser = user.role === 'USER' || user.role === 'PREMIUM';
+    const isTrainee      = !!user.clientProfile;
+
+    const activeProfiles: ActiveProfile[] = [];
+
+    if (isExerciseUser)         activeProfiles.push('EXERCISE_USER');
+    if (isTrainee)              activeProfiles.push('TRAINEE');
+    if (isCoach)                activeProfiles.push('COACH');
+    if (user.role === 'MODERATOR') activeProfiles.push('MODERATOR');
+    if (isAdmin && !isSuperAdmin)  activeProfiles.push('ADMIN');
+    if (isSuperAdmin)           activeProfiles.push('SUPER_ADMIN', 'ADMIN');
+
+    return {
+      isTrainee,
+      isExerciseUser,
+      isCoach,
+      isAdmin,
+      isSuperAdmin,
+      clientProfileId: user.clientProfile?.id                 ?? null,
+      coachName:       user.clientProfile?.coach?.user?.name  ?? null,
+      traineeStatus:   user.clientProfile?.status             ?? null,
+      coachProfileId:  user.coachProfile?.id                  ?? null,
+      activeProfiles,
+    };
+  }
+
+  private generateAccessToken(user: any, sessionId: string, context: UserContext): string {
     return this.jwtService.sign(
       {
-        sub: user.id, email: user.email, role: user.role,
-        permissions: user.permissions ?? [], isPremium: user.isPremium, sessionId,
+        sub:             user.id,
+        email:           user.email,
+        role:            user.role,
+        permissions:     user.permissions ?? [],
+        isPremium:       user.isPremium,
+        sessionId,
+        // Context claims embedded in token — no DB lookup needed in guards
+        isTrainee:       context.isTrainee,
+        clientProfileId: context.clientProfileId,
+        activeProfiles:  context.activeProfiles,
       },
       { expiresIn: ACCESS_TOKEN_EXPIRY },
     );
@@ -854,15 +1180,22 @@ export class AuthService {
   private generateRefreshToken(userId: string, sessionId: string): string {
     return this.jwtService.sign(
       { sub: userId, sessionId, type: 'refresh' },
-      { expiresIn: REFRESH_TOKEN_EXPIRY, secret: this.config.get<string>('JWT_SECRET') },
+      {
+        expiresIn: REFRESH_TOKEN_EXPIRY,
+        secret:    this.config.get<string>('JWT_SECRET'),
+      },
     );
   }
 
   private sanitizeUser(user: any) {
     return {
-      id: user.id, email: user.email, name: user.name,
-      avatar: user.avatar, role: user.role,
-      permissions: user.permissions ?? [], isPremium: user.isPremium,
+      id:          user.id,
+      email:       user.email,
+      name:        user.name,
+      avatar:      user.avatar,
+      role:        user.role,
+      permissions: user.permissions ?? [],
+      isPremium:   user.isPremium,
     };
   }
 
@@ -895,7 +1228,10 @@ export class AuthService {
       failMap.set(userId, { count: 1, firstFailAt: Date.now() });
       return;
     }
-    failMap.set(userId, { count: existing.count + 1, firstFailAt: existing.firstFailAt });
+    failMap.set(userId, {
+      count:       existing.count + 1,
+      firstFailAt: existing.firstFailAt,
+    });
   }
 
   private clearFailedLoginAttempts(userId: string): void {
@@ -904,7 +1240,8 @@ export class AuthService {
 
   private async assertSuperAdmin(adminId: string) {
     const admin = await this.prisma.user.findUnique({
-      where: { id: adminId }, select: { permissions: true },
+      where:  { id: adminId },
+      select: { permissions: true },
     });
     if (!admin?.permissions.includes('SUPER_ADMIN')) {
       throw new ForbiddenException('Only the super admin can perform this action');
@@ -913,7 +1250,7 @@ export class AuthService {
 
   private async notifyAdminsNewCoach(coachEmail: string, coachName: string) {
     const admins = await this.prisma.user.findMany({
-      where: { role: UserRole.ADMIN, isActive: true },
+      where:  { role: UserRole.ADMIN, isActive: true },
       select: { email: true, name: true },
     });
     await Promise.allSettled(
@@ -925,7 +1262,6 @@ export class AuthService {
 }
 
 
-
 // import {
 //   Injectable,
 //   ConflictException,
@@ -934,6 +1270,7 @@ export class AuthService {
 //   ForbiddenException,
 //   NotFoundException,
 //   Logger,
+//   InternalServerErrorException,
 // } from '@nestjs/common';
 // import { JwtService } from '@nestjs/jwt';
 // import { ConfigService } from '@nestjs/config';
@@ -952,29 +1289,37 @@ export class AuthService {
 // import { AppleLoginDto } from './dto/apple-login.dto';
 // import { BootstrapSuperAdminDto } from './dto/bootstrap-super-admin.dto';
 // import { AdminCreateUserDto } from './dto/admin0create-user.dto';
+// import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
+// import { UpdateProfileDto } from './dto/update-profile.dto';
 
-
-// // ─── Security constants ─────────────────────────────────────────────────────
-// const SALT_ROUNDS           = 12;
-// const MAX_LOGIN_ATTEMPTS    = 5;
-// const LOCK_DURATION_MS      = 15 * 60 * 1000;        // 15 minutes
-// const SESSION_EXPIRY_MS     = 30 * 24 * 60 * 60 * 1000; // 30 days
+// // ─── Security constants ──────────────────────────────────────────────────────
+// const SALT_ROUNDS = 12;
+// const MAX_LOGIN_ATTEMPTS = 5;
+// const LOCK_DURATION_MS = 15 * 60 * 60 * 1000; // 15 minutes
+// const SESSION_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // const MAX_SESSIONS_PER_USER = 5;
-// const ACCESS_TOKEN_EXPIRY   = '15m';
-// const REFRESH_TOKEN_EXPIRY  = '30d';
+// const ACCESS_TOKEN_EXPIRY = '15m';
+// const REFRESH_TOKEN_EXPIRY = '30d';
 
-// // ─── Reusable select ────────────────────────────────────────────────────────
+// // ─── Reusable DB select ──────────────────────────────────────────────────────
 // const USER_SAFE_SELECT = {
-//   id: true, email: true, name: true, avatar: true,
-//   role: true, permissions: true, isPremium: true,
-//   premiumUntil: true, emailVerified: true, createdAt: true,
+//   id: true,
+//   email: true,
+//   name: true,
+//   avatar: true,
+//   role: true,
+//   permissions: true,
+//   isPremium: true,
+//   premiumUntil: true,
+//   emailVerified: true,
+//   createdAt: true,
 // } as const;
 
 // // ─── In-memory brute-force tracker ──────────────────────────────────────────
-// // WHY: Your schema has no `LoginAttempt` / `loginAttempt` model.
-// // This Map-based solution requires ZERO schema changes.
-// // For multi-instance / Redis deployments: swap with @nestjs/cache + Redis.
-// interface FailRecord { count: number; firstFailAt: number }
+// interface FailRecord {
+//   count: number;
+//   firstFailAt: number;
+// }
 // const failMap = new Map<string, FailRecord>();
 
 // @Injectable()
@@ -984,6 +1329,7 @@ export class AuthService {
 //   constructor(
 //     private readonly prisma: PrismaService,
 //     private readonly jwtService: JwtService,
+//     private readonly cloudinaryService: CloudinaryService,
 //     private readonly config: ConfigService,
 //     private readonly firebaseService: FirebaseService,
 //     private readonly emailService: EmailService,
@@ -996,18 +1342,29 @@ export class AuthService {
 //   // ══════════════════════════════════════════════════════════════════════════
 
 //   async register(dto: RegisterDto, deviceInfo?: string, ipAddress?: string) {
-//     const { email, password, name, avatar, provider = AuthProvider.EMAIL } = dto;
+//     const {
+//       email,
+//       password,
+//       name,
+//       avatar,
+//       provider = AuthProvider.EMAIL,
+//     } = dto;
 //     const normalizedEmail = email.toLowerCase().trim();
 
-//     const existing = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
-//     if (existing) throw new ConflictException('An account with this email already exists');
+//     const existing = await this.prisma.user.findUnique({
+//       where: { email: normalizedEmail },
+//     });
+//     if (existing)
+//       throw new ConflictException('An account with this email already exists');
 
 //     if (provider === AuthProvider.EMAIL && !password) {
 //       throw new BadRequestException('Password is required for email signup');
 //     }
 
 //     const passwordHash =
-//       provider === AuthProvider.EMAIL ? await bcrypt.hash(password!, SALT_ROUNDS) : null;
+//       provider === AuthProvider.EMAIL
+//         ? await bcrypt.hash(password!, SALT_ROUNDS)
+//         : null;
 
 //     const user = await this.prisma.user.create({
 //       data: {
@@ -1033,18 +1390,27 @@ export class AuthService {
 //     }
 
 //     await this.auditService.log({
-//       action: 'USER_REGISTERED', userId: user.id, ipAddress,
+//       action: 'USER_REGISTERED',
+//       userId: user.id,
+//       ipAddress,
 //       meta: { provider, email: normalizedEmail },
 //     });
 
 //     return this.createSession(user.id, deviceInfo, ipAddress);
 //   }
 
-//    async registerCoach(dto: CoachRegisterDto, deviceInfo?: string, ipAddress?: string) {
+//   async registerCoach(
+//     dto: CoachRegisterDto,
+//     deviceInfo?: string,
+//     ipAddress?: string,
+//   ) {
 //     const normalizedEmail = dto.email.toLowerCase().trim();
 
-//     const existing = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
-//     if (existing) throw new ConflictException('An account with this email already exists');
+//     const existing = await this.prisma.user.findUnique({
+//       where: { email: normalizedEmail },
+//     });
+//     if (existing)
+//       throw new ConflictException('An account with this email already exists');
 
 //     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
 
@@ -1056,7 +1422,7 @@ export class AuthService {
 //         provider: AuthProvider.EMAIL,
 //         role: UserRole.COACH,
 //         emailVerified: false,
-//         isActive: true,                // account is active — coach can log in
+//         isActive: true, // account is active — coach can log in
 //         subscription: { create: { plan: 'FREE', status: 'ACTIVE' } },
 //         coachProfile: {
 //           create: {
@@ -1066,7 +1432,7 @@ export class AuthService {
 //             gymName: dto.gymName,
 //             gymLocation: dto.gymLocation,
 //             isVerified: false,
-//             isActive: false,           // coach FEATURES locked until admin approves
+//             isActive: false, // coach FEATURES locked until admin approves
 //           },
 //         },
 //       },
@@ -1075,68 +1441,109 @@ export class AuthService {
 
 //     // Send email verification to coach
 //     const verifyToken = this.tokenService.generateVerificationToken(user.id);
-//     await this.emailService.sendVerificationEmail(user.email, user.name ?? 'Coach', verifyToken);
+//     await this.emailService.sendVerificationEmail(
+//       user.email,
+//       user.name ?? 'Coach',
+//       verifyToken,
+//     );
 
 //     // Notify all admins that a new coach is pending review
 //     await this.notifyAdminsNewCoach(user.email, user.name ?? 'Coach');
 
 //     await this.auditService.log({
-//       action: 'COACH_REGISTERED', userId: user.id, ipAddress,
+//       action: 'COACH_REGISTERED',
+//       userId: user.id,
+//       ipAddress,
 //       meta: { email: normalizedEmail, gymName: dto.gymName },
 //     });
 
-    
 //     return this.createSession(user.id, deviceInfo, ipAddress);
 //   }
 
-//   // async registerCoach(dto: CoachRegisterDto, deviceInfo?: string, ipAddress?: string) {
-//   //   const normalizedEmail = dto.email.toLowerCase().trim();
+//   //======================profile api======================
 
-//   //   const existing = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
-//   //   if (existing) throw new ConflictException('An account with this email already exists');
+//   async updateProfile(
+//     userId: string,
+//     dto: UpdateProfileDto,
+//     avatarFile?: Express.Multer.File,
+//   ) {
+//     const user = await this.prisma.user.findUnique({ where: { id: userId } });
+//     if (!user) throw new NotFoundException('User not found');
 
-//   //   const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+//     // ── phone validation in service (avoids multipart/form-data DTO issues) ─
+//     if (dto.phoneNumber !== undefined && dto.phoneNumber !== '') {
+//       const phoneRegex = /^\+?[0-9\s\-().]{7,20}$/;
+//       if (!phoneRegex.test(dto.phoneNumber.trim())) {
+//         throw new BadRequestException(
+//           'phoneNumber must be a valid phone number (e.g. 01712345678 or +8801712345678)',
+//         );
+//       }
+//     }
 
-//   //   const user = await this.prisma.user.create({
-//   //     data: {
-//   //       email: normalizedEmail,
-//   //       passwordHash,
-//   //       name: dto.name.trim(),
-//   //       provider: AuthProvider.EMAIL,
-//   //       role: UserRole.COACH,
-//   //       emailVerified: false,
-     
-//   //       subscription: { create: { plan: 'FREE', status: 'ACTIVE' } },
-//   //       coachProfile: {
-//   //         create: {
-//   //           bio: dto.bio,
-//   //           specialties: dto.specialties ?? [],
-//   //           certifications: dto.certifications ?? [],
-//   //           gymName: dto.gymName,
-//   //           gymLocation: dto.gymLocation,
-//   //           isVerified: false,
-//   //           isActive: false,         // blocked until admin approves
-//   //         },
-//   //       },
-//   //     },
-//   //     select: USER_SAFE_SELECT,
-//   //   });
+//     // ── upload avatar to Cloudinary if file provided ──────────────────────
+//     let avatarUrl: string | undefined;
+//     if (avatarFile) {
+//       const result = (await this.cloudinaryService.uploadImageFromBuffer(
+//         avatarFile.buffer,
+//         'avatars',
+//         `avatar_${userId}_${Date.now()}`,
+//       )) as { secure_url: string };
+//       avatarUrl = result.secure_url;
+//     }
 
-//   //   const verifyToken = this.tokenService.generateVerificationToken(user.id);
-//   //   await this.emailService.sendVerificationEmail(user.email, user.name ?? 'Coach', verifyToken);
-//   //   await this.notifyAdminsNewCoach(user.email, user.name ?? 'Coach');
+//     // ── build update payload — only include fields that were sent ─────────
+//     const updateData: Record<string, any> = {};
+//     if (dto.name !== undefined) updateData.name = dto.name.trim();
+//     if (dto.phoneNumber !== undefined)
+//       updateData.phoneNumber = dto.phoneNumber.trim();
+//     if (avatarUrl !== undefined) updateData.avatar = avatarUrl;
 
-//   //   await this.auditService.log({
-//   //     action: 'COACH_REGISTERED', userId: user.id, ipAddress,
-//   //     meta: { email: normalizedEmail, gymName: dto.gymName },
-//   //   });
+//     if (Object.keys(updateData).length === 0) {
+//       return this.prisma.user.findUnique({
+//         where: { id: userId },
+//         select: {
+//           id: true,
+//           email: true,
+//           name: true,
+//           avatar: true,
+//           phoneNumber: true,
+//           role: true,
+//           isPremium: true,
+//           premiumUntil: true,
+//           emailVerified: true,
+//           createdAt: true,
+//         },
+//       });
+//     }
 
-//   //   return {
-//   //     message:
-//   //       'Coach registration submitted. Please verify your email. Your account will be reviewed by an admin before activation.',
-//   //     userId: user.id,
-//   //   };
-//   // }
+//     const updated = await this.prisma.user.update({
+//       where: { id: userId },
+//       data: updateData,
+//       select: {
+//         id: true,
+//         email: true,
+//         name: true,
+//         avatar: true,
+//         phoneNumber: true,
+//         role: true,
+//         isPremium: true,
+//         premiumUntil: true,
+//         emailVerified: true,
+//         createdAt: true,
+//       },
+//     });
+
+//     await this.auditService.log({
+//       action: 'PROFILE_UPDATED',
+//       userId,
+//       meta: {
+//         updatedFields: Object.keys(updateData),
+//         avatarUpdated: !!avatarUrl,
+//       },
+//     });
+
+//     return updated;
+//   }
 
 //   // ══════════════════════════════════════════════════════════════════════════
 //   // LOGIN
@@ -1144,55 +1551,96 @@ export class AuthService {
 
 //   async login(dto: LoginDto, deviceInfo?: string, ipAddress?: string) {
 //     const normalizedEmail = dto.email.toLowerCase().trim();
-//     const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
 
-//     // Timing-safe: always hash even when user not found — prevents enumeration
-//     if (!user) {
-//       await bcrypt.hash(dto.password, SALT_ROUNDS);
-//       throw new UnauthorizedException('Invalid credentials');
-//     }
-
-//     // Brute-force gate (synchronous — no DB hit)
-//     this.checkAccountLock(user.id);
-
-//     if (!user.isActive) {
-//       throw new UnauthorizedException(
-//         'This account has been deactivated. Please contact support.',
-//       );
-//     }
-
-//     if (user.provider !== AuthProvider.EMAIL) {
-//       throw new UnauthorizedException(`Please sign in with ${user.provider}`);
-//     }
-
-//     if (!user.passwordHash) {
-//       throw new UnauthorizedException('Password login not configured for this account');
-//     }
-
-//     const isValid = await bcrypt.compare(dto.password, user.passwordHash);
-//     if (!isValid) {
-//       this.recordFailedLogin(user.id);
-//       await this.auditService.log({
-//         action: 'LOGIN_FAILED', userId: user.id, ipAddress,
-//         meta: { reason: 'wrong_password' },
+//     try {
+//       const user = await this.prisma.user.findUnique({
+//         where: { email: normalizedEmail },
 //       });
-//       throw new UnauthorizedException('Invalid credentials');
+
+//       if (!user) {
+//         await bcrypt.hash(dto.password, SALT_ROUNDS);
+//         throw new UnauthorizedException({
+//           message: 'Invalid credentials',
+//           errorCode: 'INVALID_CREDENTIALS',
+//         });
+//       }
+
+//       this.checkAccountLock(user.id);
+
+//       if (!user.isActive) {
+//         throw new UnauthorizedException({
+//           message: 'Account is deactivated. Please contact support.',
+//           errorCode: 'ACCOUNT_DEACTIVATED',
+//         });
+//       }
+
+//       if (user.provider !== AuthProvider.EMAIL) {
+//         await bcrypt.hash(dto.password, SALT_ROUNDS);
+//         throw new UnauthorizedException({
+//           message: 'Invalid credentials',
+//           errorCode: 'INVALID_CREDENTIALS',
+//         });
+//       }
+
+  
+//       if (!user.passwordHash) {
+//         throw new UnauthorizedException({
+//           message: 'Invalid credentials',
+//           errorCode: 'INVALID_CREDENTIALS',
+//         });
+//       }
+
+//       const isValid = await bcrypt.compare(dto.password, user.passwordHash);
+
+//       if (!isValid) {
+//         this.recordFailedLogin(user.id);
+
+//         await this.auditService.log({
+//           action: 'LOGIN_FAILED',
+//           userId: user.id,
+//           ipAddress,
+//           meta: { reason: 'invalid_credentials' },
+//         });
+
+//         throw new UnauthorizedException({
+//           message: 'Invalid credentials',
+//           errorCode: 'INVALID_CREDENTIALS',
+//         });
+//       }
+
+//       this.clearFailedLoginAttempts(user.id);
+
+//       await this.prisma.user.update({
+//         where: { id: user.id },
+//         data: {
+//           lastLoginAt: new Date(),
+//           lastActiveDate: new Date(),
+//         },
+//       });
+
+//       await this.auditService.log({
+//         action: 'USER_LOGIN',
+//         userId: user.id,
+//         ipAddress,
+//         meta: { provider: 'EMAIL', deviceInfo },
+//       });
+
+//       return this.createSession(user.id, deviceInfo, ipAddress);
+//     } catch (error) {
+//       if (error instanceof UnauthorizedException) {
+//         throw error;
+//       }
+
+//       this.logger.error('Login failed unexpectedly', {
+//         email: normalizedEmail,
+//         error,
+//       });
+
+//       throw new InternalServerErrorException({
+//         message: 'Login failed. Please try again later.',
+//         errorCode: 'LOGIN_FAILED',
+//       });
 //     }
-
-//     // Success — clear lock counter
-//     this.clearFailedLoginAttempts(user.id);
-
-//     await this.prisma.user.update({
-//       where: { id: user.id },
-//       data: { lastLoginAt: new Date(), lastActiveDate: new Date() },
-//     });
-
-//     await this.auditService.log({
-//       action: 'USER_LOGIN', userId: user.id, ipAddress,
-//       meta: { provider: 'EMAIL', deviceInfo },
-//     });
-
-//     return this.createSession(user.id, deviceInfo, ipAddress);
 //   }
 
 //   async googleLogin(dto: GoogleLoginDto) {
@@ -1200,10 +1648,13 @@ export class AuthService {
 //     try {
 //       decoded = await this.firebaseService.verifyIdToken(dto.idToken);
 //     } catch (err: any) {
-//       throw new UnauthorizedException(`Google authentication failed: ${err.message}`);
+//       throw new UnauthorizedException(
+//         `Google authentication failed: ${err.message}`,
+//       );
 //     }
 
-//     if (!decoded.email) throw new BadRequestException('Google account must have an email');
+//     if (!decoded.email)
+//       throw new BadRequestException('Google account must have an email');
 
 //     let user = await this.prisma.user.findFirst({
 //       where: {
@@ -1216,32 +1667,40 @@ export class AuthService {
 //     });
 
 //     if (user) {
-//       if (!user.isActive) throw new UnauthorizedException('Account is deactivated');
+//       if (!user.isActive)
+//         throw new UnauthorizedException('Account is deactivated');
 //       user = await this.prisma.user.update({
 //         where: { id: user.id },
 //         data: {
-//           googleId: decoded.uid, firebaseUid: decoded.uid,
+//           googleId: decoded.uid,
+//           firebaseUid: decoded.uid,
 //           emailVerified: true,
 //           avatar: decoded.picture ?? user.avatar,
 //           name: user.name ?? decoded.name,
-//           lastLoginAt: new Date(), lastActiveDate: new Date(),
+//           lastLoginAt: new Date(),
+//           lastActiveDate: new Date(),
 //         },
 //       });
 //     } else {
 //       user = await this.prisma.user.create({
 //         data: {
-//           email: decoded.email, googleId: decoded.uid, firebaseUid: decoded.uid,
+//           email: decoded.email,
+//           googleId: decoded.uid,
+//           firebaseUid: decoded.uid,
 //           name: decoded.name ?? decoded.email.split('@')[0],
 //           avatar: decoded.picture,
 //           provider: AuthProvider.GOOGLE,
-//           role: UserRole.USER, emailVerified: true,
+//           role: UserRole.USER,
+//           emailVerified: true,
 //           subscription: { create: { plan: 'FREE', status: 'ACTIVE' } },
 //         },
 //       });
 //     }
 
 //     await this.auditService.log({
-//       action: 'USER_LOGIN', userId: user.id, ipAddress: dto.ipAddress,
+//       action: 'USER_LOGIN',
+//       userId: user.id,
+//       ipAddress: dto.ipAddress,
 //       meta: { provider: 'GOOGLE' },
 //     });
 
@@ -1262,11 +1721,15 @@ export class AuthService {
 //       }
 //     }
 
-//     if (!email) throw new BadRequestException('Email is required for Apple login');
+//     if (!email)
+//       throw new BadRequestException('Email is required for Apple login');
 
 //     if (!appleUserId && dto.identityToken) {
 //       appleUserId = crypto
-//         .createHash('sha256').update(dto.identityToken).digest('hex').slice(0, 28);
+//         .createHash('sha256')
+//         .update(dto.identityToken)
+//         .digest('hex')
+//         .slice(0, 28);
 //     }
 
 //     let user = await this.prisma.user.findFirst({
@@ -1279,12 +1742,15 @@ export class AuthService {
 //     });
 
 //     if (user) {
-//       if (!user.isActive) throw new UnauthorizedException('Account is deactivated');
+//       if (!user.isActive)
+//         throw new UnauthorizedException('Account is deactivated');
 //       user = await this.prisma.user.update({
 //         where: { id: user.id },
 //         data: {
 //           ...(appleUserId ? { appleId: appleUserId } : {}),
-//           emailVerified: true, lastLoginAt: new Date(), lastActiveDate: new Date(),
+//           emailVerified: true,
+//           lastLoginAt: new Date(),
+//           lastActiveDate: new Date(),
 //         },
 //       });
 //     } else {
@@ -1292,15 +1758,19 @@ export class AuthService {
 //         data: {
 //           email,
 //           ...(appleUserId ? { appleId: appleUserId } : {}),
-//           provider: AuthProvider.APPLE, role: UserRole.USER,
-//           emailVerified: true, name: email.split('@')[0],
+//           provider: AuthProvider.APPLE,
+//           role: UserRole.USER,
+//           emailVerified: true,
+//           name: email.split('@')[0],
 //           subscription: { create: { plan: 'FREE', status: 'ACTIVE' } },
 //         },
 //       });
 //     }
 
 //     await this.auditService.log({
-//       action: 'USER_LOGIN', userId: user.id, ipAddress: dto.ipAddress,
+//       action: 'USER_LOGIN',
+//       userId: user.id,
+//       ipAddress: dto.ipAddress,
 //       meta: { provider: 'APPLE' },
 //     });
 
@@ -1312,12 +1782,16 @@ export class AuthService {
 //   // ══════════════════════════════════════════════════════════════════════════
 
 //   async logout(sessionId: string, userId: string) {
-//     await this.prisma.session.deleteMany({ where: { id: sessionId, userId } }).catch(() => {});
+//     await this.prisma.session
+//       .deleteMany({ where: { id: sessionId, userId } })
+//       .catch(() => {});
 //     return { message: 'Logged out successfully' };
 //   }
 
 //   async logoutAll(userId: string) {
-//     const { count } = await this.prisma.session.deleteMany({ where: { userId } });
+//     const { count } = await this.prisma.session.deleteMany({
+//       where: { userId },
+//     });
 //     await this.auditService.log({ action: 'LOGOUT_ALL_SESSIONS', userId });
 //     return { message: `Logged out from ${count} device(s)` };
 //   }
@@ -1326,15 +1800,21 @@ export class AuthService {
 //     return this.prisma.session.findMany({
 //       where: { userId, expiresAt: { gt: new Date() } },
 //       select: {
-//         id: true, deviceInfo: true, ipAddress: true,
-//         lastActiveAt: true, createdAt: true, expiresAt: true,
+//         id: true,
+//         deviceInfo: true,
+//         ipAddress: true,
+//         lastActiveAt: true,
+//         createdAt: true,
+//         expiresAt: true,
 //       },
 //       orderBy: { lastActiveAt: 'desc' },
 //     });
 //   }
 
 //   async revokeSession(userId: string, sessionId: string) {
-//     const session = await this.prisma.session.findFirst({ where: { id: sessionId, userId } });
+//     const session = await this.prisma.session.findFirst({
+//       where: { id: sessionId, userId },
+//     });
 //     if (!session) throw new NotFoundException('Session not found');
 //     await this.prisma.session.delete({ where: { id: sessionId } });
 //     return { message: 'Session revoked successfully' };
@@ -1354,25 +1834,33 @@ export class AuthService {
 //       throw new UnauthorizedException('Invalid or expired refresh token');
 //     }
 
-//     if (payload.type !== 'refresh') throw new UnauthorizedException('Invalid token type');
+//     if (payload.type !== 'refresh')
+//       throw new UnauthorizedException('Invalid token type');
 
 //     const session = await this.prisma.session.findUnique({
 //       where: { id: payload.sessionId },
 //       include: { user: true },
 //     });
 
-//     if (!session || session.userId !== payload.sub || session.expiresAt < new Date()) {
+//     if (
+//       !session ||
+//       session.userId !== payload.sub ||
+//       session.expiresAt < new Date()
+//     ) {
 //       throw new UnauthorizedException('Session expired. Please log in again.');
 //     }
+//     if (!session.user.isActive)
+//       throw new UnauthorizedException('Account has been deactivated');
 
-//     if (!session.user.isActive) throw new UnauthorizedException('Account has been deactivated');
-
-//     await this.prisma.session.update({ where: { id: session.id }, data: { lastActiveAt: new Date() } });
+//     await this.prisma.session.update({
+//       where: { id: session.id },
+//       data: { lastActiveAt: new Date() },
+//     });
 
 //     return {
-//       accessToken:  this.generateAccessToken(session.user, session.id),
+//       accessToken: this.generateAccessToken(session.user, session.id),
 //       refreshToken: this.generateRefreshToken(session.user.id, session.id),
-//       user:         this.sanitizeUser(session.user),
+//       user: this.sanitizeUser(session.user),
 //     };
 //   }
 
@@ -1381,12 +1869,21 @@ export class AuthService {
 //   // ══════════════════════════════════════════════════════════════════════════
 
 //   async requestEmailVerification(email: string) {
-//     const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+//     const user = await this.prisma.user.findUnique({
+//       where: { email: email.toLowerCase().trim() },
+//     });
 //     if (!user || user.emailVerified) {
-//       return { message: 'If an unverified account exists with this email, a verification link has been sent' };
+//       return {
+//         message:
+//           'If an unverified account exists with this email, a verification link has been sent',
+//       };
 //     }
 //     const token = this.tokenService.generateVerificationToken(user.id);
-//     await this.emailService.sendVerificationEmail(user.email, user.name ?? 'User', token);
+//     await this.emailService.sendVerificationEmail(
+//       user.email,
+//       user.name ?? 'User',
+//       token,
+//     );
 //     return { message: 'Verification email sent' };
 //   }
 
@@ -1395,11 +1892,16 @@ export class AuthService {
 //     if (!result.valid || !result.userId) {
 //       throw new BadRequestException('Invalid or expired verification token');
 //     }
-//     const user = await this.prisma.user.findUnique({ where: { id: result.userId } });
+//     const user = await this.prisma.user.findUnique({
+//       where: { id: result.userId },
+//     });
 //     if (!user) throw new BadRequestException('User not found');
 //     if (user.emailVerified) return { message: 'Email already verified' };
 
-//     await this.prisma.user.update({ where: { id: result.userId }, data: { emailVerified: true } });
+//     await this.prisma.user.update({
+//       where: { id: result.userId },
+//       data: { emailVerified: true },
+//     });
 //     await this.emailService.sendWelcomeEmail(user.email, user.name ?? 'User');
 //     return { message: 'Email verified successfully' };
 //   }
@@ -1409,9 +1911,14 @@ export class AuthService {
 //   // ══════════════════════════════════════════════════════════════════════════
 
 //   async requestPasswordReset(email: string) {
-//     const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+//     const user = await this.prisma.user.findUnique({
+//       where: { email: email.toLowerCase().trim() },
+//     });
 //     if (!user) {
-//       return { message: 'If an account exists with this email, reset instructions have been sent' };
+//       return {
+//         message:
+//           'If an account exists with this email, reset instructions have been sent',
+//       };
 //     }
 //     if (user.provider !== AuthProvider.EMAIL) {
 //       throw new BadRequestException(
@@ -1419,62 +1926,128 @@ export class AuthService {
 //       );
 //     }
 //     const token = this.tokenService.generatePasswordResetToken(user.id);
-//     await this.emailService.sendPasswordResetEmail(user.email, user.name ?? 'User', token);
+//     await this.emailService.sendPasswordResetEmail(
+//       user.email,
+//       user.name ?? 'User',
+//       token,
+//     );
 //     return { message: 'Password reset instructions sent to your email' };
 //   }
 
 //   async resetPassword(token: string, newPassword: string) {
 //     const result = this.tokenService.verifyToken(token, 'password_reset');
-//     if (!result.valid || !result.userId) throw new BadRequestException('Invalid or expired reset token');
-
-//     const user = await this.prisma.user.findUnique({ where: { id: result.userId } });
+//     if (!result.valid || !result.userId) {
+//       throw new BadRequestException('Invalid or expired reset token');
+//     }
+//     const user = await this.prisma.user.findUnique({
+//       where: { id: result.userId },
+//     });
 //     if (!user) throw new BadRequestException('User not found');
 
 //     const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
 //     await this.prisma.$transaction([
-//       this.prisma.user.update({ where: { id: result.userId }, data: { passwordHash } }),
+//       this.prisma.user.update({
+//         where: { id: result.userId },
+//         data: { passwordHash },
+//       }),
 //       this.prisma.session.deleteMany({ where: { userId: result.userId } }),
 //     ]);
 
-//     await this.auditService.log({ action: 'PASSWORD_RESET', userId: result.userId });
+//     await this.auditService.log({
+//       action: 'PASSWORD_RESET',
+//       userId: result.userId,
+//     });
 //     return { message: 'Password reset successful. Please log in again.' };
 //   }
 
-//   async changePassword(userId: string, oldPassword: string, newPassword: string) {
+//   async changePassword(
+//     userId: string,
+//     oldPassword: string,
+//     newPassword: string,
+//   ) {
 //     if (oldPassword === newPassword) {
-//       throw new BadRequestException('New password must be different from current password');
+//       throw new BadRequestException(
+//         'New password must be different from current password',
+//       );
 //     }
 //     const user = await this.prisma.user.findUnique({ where: { id: userId } });
 //     if (!user) throw new NotFoundException('User not found');
-//     if (!user.passwordHash) throw new BadRequestException('Password login not configured for this account');
-
+//     if (!user.passwordHash) {
+//       throw new BadRequestException(
+//         'Password login not configured for this account',
+//       );
+//     }
 //     const isValid = await bcrypt.compare(oldPassword, user.passwordHash);
-//     if (!isValid) throw new UnauthorizedException('Current password is incorrect');
+//     if (!isValid)
+//       throw new UnauthorizedException('Current password is incorrect');
 
 //     const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-//     await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+//     await this.prisma.user.update({
+//       where: { id: userId },
+//       data: { passwordHash },
+//     });
 //     await this.auditService.log({ action: 'PASSWORD_CHANGED', userId });
 //     return { message: 'Password changed successfully' };
 //   }
 
 //   // ══════════════════════════════════════════════════════════════════════════
 //   // SUPER ADMIN BOOTSTRAP
+//   //
+//   // Full flow step by step:
+//   //
+//   //   1. In your .env file, add:
+//   //        SUPERADMIN_BOOTSTRAP_KEY=replace-with-a-long-random-secret
+//   //      You can generate one with:
+//   //        node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+//   //
+//   //   2. Start your server, then call:
+//   //        POST /api/v1/auth/super-admin/bootstrap
+//   //        {
+//   //          "email": "superadmin@yourapp.com",
+//   //          "password": "SuperSecurePass123!",
+//   //          "secretKey": "replace-with-a-long-random-secret"   ← same as .env
+//   //        }
+//   //
+//   //   3. The service:
+//   //        a. Compares secretKey to SUPERADMIN_BOOTSTRAP_KEY with timing-safe compare
+//   //        b. Checks no super admin already exists (throws 409 if one does)
+//   //        c. Creates the user with role=ADMIN and permissions=['SUPER_ADMIN', ...]
+//   //        d. Returns { message, userId, email }
+//   //
+//   //   4. After success:
+//   //        - Remove SUPERADMIN_BOOTSTRAP_KEY from .env entirely
+//   //        - The endpoint will return 403 from now on (disabled permanently)
+//   //        - The super admin logs in via the normal POST /auth/login endpoint
+//   //
+//   //   NOTE: This does NOT return tokens. The super admin must log in separately
+//   //   via POST /auth/login after bootstrapping.
 //   // ══════════════════════════════════════════════════════════════════════════
 
 //   async bootstrapSuperAdmin(dto: BootstrapSuperAdminDto) {
 //     const bootstrapKey = this.config.get<string>('SUPERADMIN_BOOTSTRAP_KEY');
-//     if (!bootstrapKey) throw new ForbiddenException('Super admin bootstrapping is disabled');
+//     if (!bootstrapKey) {
+//       throw new ForbiddenException('Super admin bootstrapping is disabled');
+//     }
 
-//     const keyBuffer      = Buffer.from(dto.secretKey);
+//     // Timing-safe comparison — prevents timing attacks on the secret key
+//     const keyBuffer = Buffer.from(dto.secretKey);
 //     const expectedBuffer = Buffer.from(bootstrapKey);
-//     if (keyBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(keyBuffer, expectedBuffer)) {
+//     if (
+//       keyBuffer.length !== expectedBuffer.length ||
+//       !crypto.timingSafeEqual(keyBuffer, expectedBuffer)
+//     ) {
 //       throw new ForbiddenException('Invalid bootstrap key');
 //     }
 
-//     const existing = await this.prisma.user.findFirst({ where: { permissions: { has: 'SUPER_ADMIN' } } });
-//     if (existing) throw new ConflictException('A super admin account already exists');
+//     // Only one super admin can ever exist
+//     const existing = await this.prisma.user.findFirst({
+//       where: { permissions: { has: 'SUPER_ADMIN' } },
+//     });
+//     if (existing)
+//       throw new ConflictException('A super admin account already exists');
 
 //     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+
 //     const user = await this.prisma.user.create({
 //       data: {
 //         email: dto.email.toLowerCase().trim(),
@@ -1482,10 +2055,17 @@ export class AuthService {
 //         name: 'Super Admin',
 //         provider: AuthProvider.EMAIL,
 //         role: UserRole.ADMIN,
-//         emailVerified: true, isActive: true,
+//         emailVerified: true,
+//         isActive: true,
 //         permissions: [
-//           'SUPER_ADMIN', 'CREATE_USERS', 'DELETE_USERS', 'MANAGE_ROLES',
-//           'MANAGE_COACHES', 'VIEW_AUDIT_LOGS', 'MANAGE_SUBSCRIPTIONS', 'MANAGE_CONTENT',
+//           'SUPER_ADMIN', // gates assertSuperAdmin() checks
+//           'CREATE_USERS',
+//           'DELETE_USERS',
+//           'MANAGE_ROLES',
+//           'MANAGE_COACHES',
+//           'VIEW_AUDIT_LOGS',
+//           'MANAGE_SUBSCRIPTIONS',
+//           'MANAGE_CONTENT',
 //         ],
 //         subscription: { create: { plan: 'FREE', status: 'ACTIVE' } },
 //       },
@@ -1493,10 +2073,14 @@ export class AuthService {
 //     });
 
 //     this.logger.warn(`[SECURITY] Super admin bootstrapped: ${user.email}`);
-//     await this.auditService.log({ action: 'SUPERADMIN_BOOTSTRAPPED', userId: user.id });
+//     await this.auditService.log({
+//       action: 'SUPERADMIN_BOOTSTRAPPED',
+//       userId: user.id,
+//     });
 
 //     return {
-//       message: 'Super admin created successfully. Remove or rotate SUPERADMIN_BOOTSTRAP_KEY in your environment.',
+//       message:
+//         'Super admin created. Now remove SUPERADMIN_BOOTSTRAP_KEY from your .env to disable this endpoint.',
 //       userId: user.id,
 //       email: user.email,
 //     };
@@ -1507,26 +2091,39 @@ export class AuthService {
 //   // ══════════════════════════════════════════════════════════════════════════
 
 //   async adminCreateUser(dto: AdminCreateUserDto, createdByAdminId: string) {
-//     if (dto.role === UserRole.ADMIN) await this.assertSuperAdmin(createdByAdminId);
+//     if (dto.role === UserRole.ADMIN)
+//       await this.assertSuperAdmin(createdByAdminId);
 
 //     const normalizedEmail = dto.email.toLowerCase().trim();
-//     const existing = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+//     const existing = await this.prisma.user.findUnique({
+//       where: { email: normalizedEmail },
+//     });
 //     if (existing) throw new ConflictException('Email already in use');
 
-//     const passwordHash = dto.password ? await bcrypt.hash(dto.password, SALT_ROUNDS) : null;
+//     const passwordHash = dto.password
+//       ? await bcrypt.hash(dto.password, SALT_ROUNDS)
+//       : null;
 
 //     const user = await this.prisma.user.create({
 //       data: {
-//         email: normalizedEmail, name: dto.name,
-//         passwordHash, provider: AuthProvider.EMAIL,
+//         email: normalizedEmail,
+//         name: dto.name,
+//         passwordHash,
+//         provider: AuthProvider.EMAIL,
 //         role: dto.role ?? UserRole.USER,
 //         emailVerified: dto.emailVerified ?? true,
-//         isActive: true, permissions: dto.permissions ?? [],
+//         isActive: true,
+//         permissions: dto.permissions ?? [],
 //         subscription: { create: { plan: 'FREE', status: 'ACTIVE' } },
 //         ...(dto.role === UserRole.COACH
 //           ? {
 //               coachProfile: {
-//                 create: { specialties: [], certifications: [], isVerified: true, isActive: true },
+//                 create: {
+//                   specialties: [],
+//                   certifications: [],
+//                   isVerified: true,
+//                   isActive: true,
+//                 },
 //               },
 //             }
 //           : {}),
@@ -1535,11 +2132,17 @@ export class AuthService {
 //     });
 
 //     if (dto.password) {
-//       await this.emailService.sendAdminCreatedAccountEmail(user.email, user.name ?? 'User', dto.password);
+//       await this.emailService.sendAdminCreatedAccountEmail(
+//         user.email,
+//         user.name ?? 'User',
+//         dto.password,
+//       );
 //     }
 
 //     await this.auditService.log({
-//       action: 'ADMIN_CREATED_USER', userId: createdByAdminId, targetId: user.id,
+//       action: 'ADMIN_CREATED_USER',
+//       userId: createdByAdminId,
+//       targetId: user.id,
 //       meta: { role: dto.role, email: normalizedEmail },
 //     });
 
@@ -1549,7 +2152,9 @@ export class AuthService {
 //   async adminDeleteUser(targetUserId: string, adminId: string) {
 //     await this.assertSuperAdmin(adminId);
 
-//     const target = await this.prisma.user.findUnique({ where: { id: targetUserId } });
+//     const target = await this.prisma.user.findUnique({
+//       where: { id: targetUserId },
+//     });
 //     if (!target) throw new NotFoundException('User not found');
 //     if (target.permissions.includes('SUPER_ADMIN')) {
 //       throw new ForbiddenException('Cannot delete another super admin account');
@@ -1557,14 +2162,20 @@ export class AuthService {
 
 //     await this.prisma.user.delete({ where: { id: targetUserId } });
 //     await this.auditService.log({
-//       action: 'ADMIN_DELETED_USER', userId: adminId, targetId: targetUserId,
+//       action: 'ADMIN_DELETED_USER',
+//       userId: adminId,
+//       targetId: targetUserId,
 //       meta: { deletedEmail: target.email, deletedRole: target.role },
 //     });
 
 //     return { message: 'User permanently deleted' };
 //   }
 
-//   async adminChangeRole(targetUserId: string, newRole: UserRole, adminId: string) {
+//   async adminChangeRole(
+//     targetUserId: string,
+//     newRole: UserRole,
+//     adminId: string,
+//   ) {
 //     if (newRole === UserRole.ADMIN) await this.assertSuperAdmin(adminId);
 
 //     const target = await this.prisma.user.findUnique({
@@ -1583,7 +2194,12 @@ export class AuthService {
 //         ...(newRole === UserRole.COACH && !target.coachProfile
 //           ? {
 //               coachProfile: {
-//                 create: { specialties: [], certifications: [], isVerified: true, isActive: true },
+//                 create: {
+//                   specialties: [],
+//                   certifications: [],
+//                   isVerified: true,
+//                   isActive: true,
+//                 },
 //               },
 //             }
 //           : {}),
@@ -1592,64 +2208,101 @@ export class AuthService {
 //     });
 
 //     await this.auditService.log({
-//       action: 'ADMIN_ROLE_CHANGED', userId: adminId, targetId: targetUserId,
+//       action: 'ADMIN_ROLE_CHANGED',
+//       userId: adminId,
+//       targetId: targetUserId,
 //       meta: { from: target.role, to: newRole },
 //     });
 
 //     return user;
 //   }
 
-//   async adminToggleUserStatus(targetUserId: string, isActive: boolean, adminId: string) {
-//     const target = await this.prisma.user.findUnique({ where: { id: targetUserId } });
+//   async adminToggleUserStatus(
+//     targetUserId: string,
+//     isActive: boolean,
+//     adminId: string,
+//   ) {
+//     const target = await this.prisma.user.findUnique({
+//       where: { id: targetUserId },
+//     });
 //     if (!target) throw new NotFoundException('User not found');
 //     if (target.permissions.includes('SUPER_ADMIN')) {
 //       throw new ForbiddenException('Cannot deactivate the super admin account');
 //     }
 
 //     await this.prisma.$transaction([
-//       this.prisma.user.update({ where: { id: targetUserId }, data: { isActive } }),
-//       ...(isActive ? [] : [this.prisma.session.deleteMany({ where: { userId: targetUserId } })]),
+//       this.prisma.user.update({
+//         where: { id: targetUserId },
+//         data: { isActive },
+//       }),
+//       ...(isActive
+//         ? []
+//         : [
+//             this.prisma.session.deleteMany({ where: { userId: targetUserId } }),
+//           ]),
 //     ]);
 
 //     await this.auditService.log({
 //       action: isActive ? 'ADMIN_USER_ACTIVATED' : 'ADMIN_USER_DEACTIVATED',
-//       userId: adminId, targetId: targetUserId,
+//       userId: adminId,
+//       targetId: targetUserId,
 //     });
 
-//     return { message: `User ${isActive ? 'activated' : 'deactivated'} successfully` };
+//     return {
+//       message: `User ${isActive ? 'activated' : 'deactivated'} successfully`,
+//     };
 //   }
 
-//   async adminApproveCoach(coachUserId: string, adminId: string, approved: boolean) {
+//   async adminApproveCoach(
+//     coachUserId: string,
+//     adminId: string,
+//     approved: boolean,
+//   ) {
 //     const coach = await this.prisma.user.findUnique({
 //       where: { id: coachUserId },
 //       include: { coachProfile: true },
 //     });
-
-//     if (!coach || coach.role !== UserRole.COACH) throw new NotFoundException('Coach not found');
-//     if (!coach.coachProfile) throw new BadRequestException('Coach profile missing');
+//     if (!coach || coach.role !== UserRole.COACH)
+//       throw new NotFoundException('Coach not found');
+//     if (!coach.coachProfile)
+//       throw new BadRequestException('Coach profile missing');
 
 //     await this.prisma.coachProfile.update({
 //       where: { userId: coachUserId },
 //       data: { isVerified: approved, isActive: approved },
 //     });
 
-//     await this.emailService.sendCoachApprovalEmail(coach.email, coach.name ?? 'Coach', approved);
-
+//     await this.emailService.sendCoachApprovalEmail(
+//       coach.email,
+//       coach.name ?? 'Coach',
+//       approved,
+//     );
 //     await this.auditService.log({
 //       action: approved ? 'ADMIN_COACH_APPROVED' : 'ADMIN_COACH_REJECTED',
-//       userId: adminId, targetId: coachUserId,
+//       userId: adminId,
+//       targetId: coachUserId,
 //     });
 
-//     return { message: `Coach ${approved ? 'approved and activated' : 'rejected'} successfully` };
+//     return {
+//       message: `Coach ${approved ? 'approved and activated' : 'rejected'} successfully`,
+//     };
 //   }
 
-//   async adminUpdatePermissions(targetUserId: string, permissions: string[], adminId: string) {
+//   async adminUpdatePermissions(
+//     targetUserId: string,
+//     permissions: string[],
+//     adminId: string,
+//   ) {
 //     await this.assertSuperAdmin(adminId);
-//     if (permissions.includes('SUPER_ADMIN')) {
-//       throw new ForbiddenException('Cannot grant SUPER_ADMIN permission via this endpoint');
-//     }
 
-//     const target = await this.prisma.user.findUnique({ where: { id: targetUserId } });
+//     if (permissions.includes('SUPER_ADMIN')) {
+//       throw new ForbiddenException(
+//         'Cannot grant SUPER_ADMIN permission via this endpoint',
+//       );
+//     }
+//     const target = await this.prisma.user.findUnique({
+//       where: { id: targetUserId },
+//     });
 //     if (!target) throw new NotFoundException('User not found');
 //     if (target.permissions.includes('SUPER_ADMIN')) {
 //       throw new ForbiddenException('Cannot modify super admin permissions');
@@ -1662,7 +2315,9 @@ export class AuthService {
 //     });
 
 //     await this.auditService.log({
-//       action: 'ADMIN_PERMISSIONS_UPDATED', userId: adminId, targetId: targetUserId,
+//       action: 'ADMIN_PERMISSIONS_UPDATED',
+//       userId: adminId,
+//       targetId: targetUserId,
 //       meta: { permissions },
 //     });
 
@@ -1677,9 +2332,16 @@ export class AuthService {
 //     const user = await this.prisma.user.findUnique({
 //       where: { id: payload.sub },
 //       select: {
-//         id: true, email: true, name: true, avatar: true,
-//         role: true, permissions: true, isPremium: true,
-//         premiumUntil: true, isActive: true, emailVerified: true,
+//         id: true,
+//         email: true,
+//         name: true,
+//         avatar: true,
+//         role: true,
+//         permissions: true,
+//         isPremium: true,
+//         premiumUntil: true,
+//         isActive: true,
+//         emailVerified: true,
 //       },
 //     });
 //     if (!user || !user.isActive) return null;
@@ -1690,33 +2352,42 @@ export class AuthService {
 //   // PRIVATE HELPERS
 //   // ══════════════════════════════════════════════════════════════════════════
 
-//   private async createSession(userId: string, deviceInfo?: string, ipAddress?: string) {
+//   private async createSession(
+//     userId: string,
+//     deviceInfo?: string,
+//     ipAddress?: string,
+//   ) {
+//     // Enforce max sessions per user — evict the oldest if at limit
 //     const sessionCount = await this.prisma.session.count({ where: { userId } });
 //     if (sessionCount >= MAX_SESSIONS_PER_USER) {
 //       const oldest = await this.prisma.session.findFirst({
-//         where: { userId }, orderBy: { lastActiveAt: 'asc' },
+//         where: { userId },
+//         orderBy: { lastActiveAt: 'asc' },
 //       });
-//       if (oldest) await this.prisma.session.delete({ where: { id: oldest.id } });
+//       if (oldest)
+//         await this.prisma.session.delete({ where: { id: oldest.id } });
 //     }
 
 //     const session = await this.prisma.session.create({
 //       data: {
 //         userId,
 //         token: crypto.randomBytes(32).toString('hex'),
-//         deviceInfo, ipAddress,
+//         deviceInfo,
+//         ipAddress,
 //         expiresAt: new Date(Date.now() + SESSION_EXPIRY_MS),
 //       },
 //     });
 
 //     const user = await this.prisma.user.findUnique({
-//       where: { id: userId }, select: USER_SAFE_SELECT,
+//       where: { id: userId },
+//       select: USER_SAFE_SELECT,
 //     });
 //     if (!user) throw new UnauthorizedException('User not found');
 
 //     return {
-//       accessToken:  this.generateAccessToken(user, session.id),
+//       accessToken: this.generateAccessToken(user, session.id),
 //       refreshToken: this.generateRefreshToken(userId, session.id),
-//       sessionId:    session.id,
+//       sessionId: session.id,
 //       user,
 //     };
 //   }
@@ -1724,8 +2395,12 @@ export class AuthService {
 //   private generateAccessToken(user: any, sessionId: string): string {
 //     return this.jwtService.sign(
 //       {
-//         sub: user.id, email: user.email, role: user.role,
-//         permissions: user.permissions ?? [], isPremium: user.isPremium, sessionId,
+//         sub: user.id,
+//         email: user.email,
+//         role: user.role,
+//         permissions: user.permissions ?? [],
+//         isPremium: user.isPremium,
+//         sessionId,
 //       },
 //       { expiresIn: ACCESS_TOKEN_EXPIRY },
 //     );
@@ -1734,46 +2409,44 @@ export class AuthService {
 //   private generateRefreshToken(userId: string, sessionId: string): string {
 //     return this.jwtService.sign(
 //       { sub: userId, sessionId, type: 'refresh' },
-//       { expiresIn: REFRESH_TOKEN_EXPIRY, secret: this.config.get<string>('JWT_SECRET') },
+//       {
+//         expiresIn: REFRESH_TOKEN_EXPIRY,
+//         secret: this.config.get<string>('JWT_SECRET'),
+//       },
 //     );
 //   }
 
 //   private sanitizeUser(user: any) {
 //     return {
-//       id: user.id, email: user.email, name: user.name,
-//       avatar: user.avatar, role: user.role,
-//       permissions: user.permissions ?? [], isPremium: user.isPremium,
+//       id: user.id,
+//       email: user.email,
+//       name: user.name,
+//       avatar: user.avatar,
+//       role: user.role,
+//       permissions: user.permissions ?? [],
+//       isPremium: user.isPremium,
 //     };
 //   }
 
-//   // ── Brute-force helpers ───────────────────────────────────────────────────
+//   // ── Brute-force helpers (synchronous, zero DB queries) ────────────────────
 
-//   /**
-//    * Throws 401 if >= MAX_LOGIN_ATTEMPTS failed within LOCK_DURATION_MS.
-//    * Synchronous — zero DB queries.
-//    */
-// private checkAccountLock(userId: string): void {
-//   const record = failMap.get(userId);
-  
-//   // Early return + extra safety
-//   if (!record || !record.firstFailAt || typeof record.count !== 'number') {
-//     return;
+//   private checkAccountLock(userId: string): void {
+//     const record = failMap.get(userId);
+//     if (!record || !record.firstFailAt || typeof record.count !== 'number')
+//       return;
+
+//     const elapsed = Date.now() - record.firstFailAt;
+//     if (elapsed > LOCK_DURATION_MS) {
+//       failMap.delete(userId);
+//       return;
+//     }
+//     if (record.count >= MAX_LOGIN_ATTEMPTS) {
+//       const minutesLeft = Math.ceil((LOCK_DURATION_MS - elapsed) / 60000);
+//       throw new UnauthorizedException(
+//         `Too many failed attempts. Account locked. Try again in ${minutesLeft} minute(s).`,
+//       );
+//     }
 //   }
-
-//   const elapsed = Date.now() - record.firstFailAt;
-
-//   if (elapsed > LOCK_DURATION_MS) {
-//     failMap.delete(userId);
-//     return;
-//   }
-
-//   if (record.count >= MAX_LOGIN_ATTEMPTS) {
-//     const minutesLeft = Math.ceil((LOCK_DURATION_MS - elapsed) / 60000);
-//     throw new UnauthorizedException(
-//       `Too many failed attempts. Account temporarily locked. Try again in ${minutesLeft} minute(s).`,
-//     );
-//   }
-// }
 
 //   private recordFailedLogin(userId: string): void {
 //     const existing = failMap.get(userId);
@@ -1785,7 +2458,10 @@ export class AuthService {
 //       failMap.set(userId, { count: 1, firstFailAt: Date.now() });
 //       return;
 //     }
-//     failMap.set(userId, { count: existing.count + 1, firstFailAt: existing.firstFailAt });
+//     failMap.set(userId, {
+//       count: existing.count + 1,
+//       firstFailAt: existing.firstFailAt,
+//     });
 //   }
 
 //   private clearFailedLoginAttempts(userId: string): void {
@@ -1794,10 +2470,13 @@ export class AuthService {
 
 //   private async assertSuperAdmin(adminId: string) {
 //     const admin = await this.prisma.user.findUnique({
-//       where: { id: adminId }, select: { permissions: true },
+//       where: { id: adminId },
+//       select: { permissions: true },
 //     });
 //     if (!admin?.permissions.includes('SUPER_ADMIN')) {
-//       throw new ForbiddenException('Only the super admin can perform this action');
+//       throw new ForbiddenException(
+//         'Only the super admin can perform this action',
+//       );
 //     }
 //   }
 
@@ -1807,8 +2486,15 @@ export class AuthService {
 //       select: { email: true, name: true },
 //     });
 //     await Promise.allSettled(
-//       admins.map((a) => this.emailService.sendNewCoachRegisteredEmail(a.email, coachEmail, coachName)),
+//       admins.map((a) =>
+//         this.emailService.sendNewCoachRegisteredEmail(
+//           a.email,
+//           coachEmail,
+//           coachName,
+//         ),
+//       ),
 //     );
 //   }
-  
 // }
+
+

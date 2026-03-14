@@ -1,20 +1,55 @@
 // src/programs/programs.controller.ts
 
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param,
-  Query, UseGuards, HttpCode, HttpStatus,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  BadRequestException,
+  ParseFilePipeBuilder,
+  UploadedFile,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
 import {
-  ApiTags, ApiBearerAuth, ApiOperation, ApiResponse,
-  ApiParam, ApiQuery,
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { ProgramsService } from './programs.service';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
-import { ActivateProgramDto, AddExerciseToDayDto, CopyProgramDto, CreateProgramDto, ProgramQueryDto, PublishProgramDto, ReorderExercisesDto, SaveDaySplitDto, UpdateExerciseInDayDto, UpdateProgramDto } from './dto/programs.dto';
-
+import {
+  ActivateProgramDto,
+  AddExerciseToDayDto,
+  CopyProgramDto,
+  CreateProgramDto,
+  ProgramQueryDto,
+  PublishProgramDto,
+  ReorderExercisesDto,
+  SaveDaySplitDto,
+  UpdateExerciseInDayDto,
+  UpdateProgramDto,
+} from './dto/programs.dto';
+import {
+  FileFieldsInterceptor,
+  FileInterceptor,
+} from '@nestjs/platform-express';
+import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
+import { memoryStorage } from 'multer';
 
 // ─── ADMIN CONTROLLER ────────────────────────────────────────────────────────
 @ApiTags(' Admin — Programs')
@@ -22,7 +57,10 @@ import { ActivateProgramDto, AddExerciseToDayDto, CopyProgramDto, CreateProgramD
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('admin/programs')
 export class AdminProgramsController {
-  constructor(private readonly programsService: ProgramsService) {}
+  constructor(
+    private readonly programsService: ProgramsService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
 
   // ── Step 1 ───────────────────────────────────────────────────────────────
   @Post()
@@ -30,9 +68,13 @@ export class AdminProgramsController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: '① Create Program — Basic Info',
-    description: 'Creates a new DRAFT program (isPublished=false). Returns the program ID needed for subsequent steps.',
+    description:
+      'Creates a new DRAFT program (isPublished=false). Returns the program ID needed for subsequent steps.',
   })
-  @ApiResponse({ status: 201, description: 'Program draft created successfully' })
+  @ApiResponse({
+    status: 201,
+    description: 'Program draft created successfully',
+  })
   @ApiResponse({ status: 400, description: 'Validation error' })
   @ApiResponse({ status: 403, description: 'Forbidden — insufficient role' })
   create(@Body() dto: CreateProgramDto, @CurrentUser() user: any) {
@@ -43,7 +85,8 @@ export class AdminProgramsController {
   @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @ApiOperation({
     summary: '① Update Program — Basic Info',
-    description: 'Partial update of basic program info. Only provided fields are changed.',
+    description:
+      'Partial update of basic program info. Only provided fields are changed.',
   })
   @ApiParam({ name: 'id', description: 'Program ID' })
   update(
@@ -80,7 +123,8 @@ export class AdminProgramsController {
   @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @ApiOperation({
     summary: '③ Get Day Exercises (grouped by tab)',
-    description: 'Returns mainExercises, bfrExercises, absExercises arrays for the Add Exercise modal.',
+    description:
+      'Returns mainExercises, bfrExercises, absExercises arrays for the Add Exercise modal.',
   })
   @ApiParam({ name: 'id', description: 'Program ID' })
   @ApiParam({ name: 'dayId', description: 'ProgramDay ID' })
@@ -91,33 +135,141 @@ export class AdminProgramsController {
   @Post(':id/days/:dayId/exercises')
   @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @HttpCode(HttpStatus.CREATED)
+  // ✅ Accept two named file fields: 'file' (image) + 'animationFile' (gif/mp4)
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'file', maxCount: 1 }, // exercise static image
+        { name: 'animationFile', maxCount: 1 }, // exercise animation / gif
+      ],
+      {
+        storage: memoryStorage(),
+        limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB hard limit (animation can be large)
+        fileFilter: (
+          _req: any,
+          file: Express.Multer.File,
+          cb: (error: Error | null, acceptFile: boolean) => void,
+        ) => {
+          // image field: jpg / png / webp / gif
+          if (file.fieldname === 'file') {
+            if (!/\.(jpg|jpeg|png|webp|gif)$/i.test(file.originalname)) {
+              return cb(
+                new BadRequestException('file must be jpg, png, webp, or gif'),
+                false,
+              );
+            }
+            if (file.size > 5 * 1024 * 1024) {
+              return cb(
+                new BadRequestException('file exceeds 5MB limit'),
+                false,
+              );
+            }
+          }
+          // animation field: gif / mp4 / webm / mov
+          if (file.fieldname === 'animationFile') {
+            if (!/\.(gif|mp4|webm|mov)$/i.test(file.originalname)) {
+              return cb(
+                new BadRequestException(
+                  'animationFile must be gif, mp4, webm, or mov',
+                ),
+                false,
+              );
+            }
+          }
+          cb(null, true);
+        },
+      },
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: '③ Add Exercise to Day',
-    description: `Add to Main, BFR, or ABS tab via tabType field.
-    
-    Two modes:
-    - Pick from library: provide exerciseId
-    - Create inline: provide exerciseName (+ optional fields). Exercise is saved to global library.
-    
-    Tab types:
-    - MAIN_EXERCISE: regular workout exercise
-    - BFR_EXERCISE: Blood Flow Restriction finisher  
-    - ABS_EXERCISE: Abs section exercise`,
+    description: `
+**Content-Type: multipart/form-data**
+ 
+Send the exercise payload as a JSON string in the \`data\` field.
+Optionally attach image and/or animation files.
+ 
+| Form field      | Type | Required | Description                                 |
+|-----------------|------|----------|---------------------------------------------|
+| data            | Text | ✅ Yes    | JSON string — full AddExerciseToDayDto      |
+| file            | File | ❌ No     | Exercise image (jpg/png/webp/gif, max 5MB)  |
+| animationFile   | File | ❌ No     | Animation/gif (gif/mp4/webm/mov, max 20MB)  |
+ 
+**tabType values:**
+- \`MAIN_EXERCISE\` — regular exercise (shows in main tab)
+- \`BFR_EXERCISE\`  — blood flow restriction finisher
+- \`ABS_EXERCISE\`  — abs workout
+ 
+**Two modes for the exercise:**
+1. Pick from library: include \`exerciseId\` in the JSON data
+2. Create inline: include \`exerciseName\` (+ optional description/for/image)
+`,
   })
   @ApiParam({ name: 'id', description: 'Program ID' })
-  @ApiParam({ name: 'dayId', description: 'ProgramDay ID from Step 2 response' })
-  addExercise(
+  @ApiParam({ name: 'dayId', description: 'ProgramDay ID' })
+  async addExercise(
     @Param('id') id: string,
     @Param('dayId') dayId: string,
-    @Body() dto: AddExerciseToDayDto,
+    // ✅ Both files arrive in a single decorated object
+    @UploadedFiles()
+    files: {
+      file?: Express.Multer.File[];
+      animationFile?: Express.Multer.File[];
+    },
+    @Body('data') dataJson: string,
     @CurrentUser() user: any,
   ) {
+    // ── Parse JSON payload ─────────────────────────────────────────────────
+    if (!dataJson) {
+      throw new BadRequestException(
+        'Missing \'data\' field. Send exercise JSON as: data=\'{"tabType":"MAIN_EXERCISE",...}\'',
+      );
+    }
+
+    let dto: AddExerciseToDayDto;
+    try {
+      dto = JSON.parse(dataJson);
+    } catch {
+      throw new BadRequestException(
+        'Invalid JSON in "data" field. Make sure it is a valid JSON string.',
+      );
+    }
+
+    // ── Upload exercise image if provided ──────────────────────────────────
+    const imageFile = files?.file?.[0];
+    if (imageFile) {
+      const result = await this.cloudinaryService.uploadImageFromBuffer(
+        imageFile.buffer,
+        'exercises/images',
+        `exercise-img-${Date.now()}-${imageFile.originalname.replace(/[^a-z0-9.]/gi, '-')}`,
+      );
+      // Override any URL the client sent — uploaded file takes precedence
+      dto.exerciseImageUrl = result.secure_url;
+    }
+
+    // ── Upload animation file if provided ─────────────────────────────────
+    const animFile = files?.animationFile?.[0];
+    if (animFile) {
+      const isVideo = /\.(mp4|webm|mov)$/i.test(animFile.originalname);
+      const result = await this.cloudinaryService.uploadImageFromBuffer(
+        animFile.buffer,
+        isVideo ? 'exercises/videos' : 'exercises/animations',
+        `exercise-anim-${Date.now()}-${animFile.originalname.replace(/[^a-z0-9.]/gi, '-')}`,
+      );
+      dto.exerciseAnimationUrl = result.secure_url;
+    }
+
     return this.programsService.addExerciseToDay(id, dayId, dto, user.id);
   }
 
   @Patch(':id/days/:dayId/exercises/:pdeId')
   @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
-  @ApiOperation({ summary: '③ Update Exercise Assignment', description: 'Update sets, reps, type, or metadata of an exercise in a day.' })
+  @ApiOperation({
+    summary: '③ Update Exercise Assignment',
+    description:
+      'Update sets, reps, type, or metadata of an exercise in a day.',
+  })
   @ApiParam({ name: 'id', description: 'Program ID' })
   @ApiParam({ name: 'dayId', description: 'ProgramDay ID' })
   @ApiParam({ name: 'pdeId', description: 'ProgramDayExercise ID' })
@@ -128,7 +280,13 @@ export class AdminProgramsController {
     @Body() dto: UpdateExerciseInDayDto,
     @CurrentUser() user: any,
   ) {
-    return this.programsService.updateExerciseInDay(id, dayId, pdeId, dto, user.id);
+    return this.programsService.updateExerciseInDay(
+      id,
+      dayId,
+      pdeId,
+      dto,
+      user.id,
+    );
   }
 
   @Delete(':id/days/:dayId/exercises/:pdeId')
@@ -144,14 +302,20 @@ export class AdminProgramsController {
     @Param('pdeId') pdeId: string,
     @CurrentUser() user: any,
   ) {
-    return this.programsService.removeExerciseFromDay(id, dayId, pdeId, user.id);
+    return this.programsService.removeExerciseFromDay(
+      id,
+      dayId,
+      pdeId,
+      user.id,
+    );
   }
 
   @Patch(':id/days/:dayId/exercises/reorder')
   @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @ApiOperation({
     summary: '③ Reorder Exercises',
-    description: 'Submit all exercise IDs in the desired order. Assigns sortOrder 0,1,2…',
+    description:
+      'Submit all exercise IDs in the desired order. Assigns sortOrder 0,1,2…',
   })
   reorderExercises(
     @Param('id') id: string,
@@ -167,7 +331,8 @@ export class AdminProgramsController {
   @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @ApiOperation({
     summary: '④ Get Review Summary',
-    description: 'Returns program review shape matching the Review & Publish UI (Image 1). Shows all weeks, days, methods, exercises.',
+    description:
+      'Returns program review shape matching the Review & Publish UI (Image 1). Shows all weeks, days, methods, exercises.',
   })
   @ApiParam({ name: 'id', description: 'Program ID' })
   getReview(@Param('id') id: string) {
@@ -178,7 +343,8 @@ export class AdminProgramsController {
   @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({
     summary: '④ Publish / Unpublish Program',
-    description: 'publish:true makes it visible in user library. Requires at least one exercise.',
+    description:
+      'publish:true makes it visible in user library. Requires at least one exercise.',
   })
   @ApiParam({ name: 'id', description: 'Program ID' })
   publish(
@@ -210,7 +376,8 @@ export class AdminProgramsController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Deep copy program',
-    description: 'Creates full copy (weeks → days → exercises → sets) as a new DRAFT.',
+    description:
+      'Creates full copy (weeks → days → exercises → sets) as a new DRAFT.',
   })
   @ApiParam({ name: 'id', description: 'Source program ID' })
   copy(
@@ -226,7 +393,8 @@ export class AdminProgramsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Delete program',
-    description: 'Hard delete. Blocked if any user has the program active. Archive with isActive=false instead.',
+    description:
+      'Hard delete. Blocked if any user has the program active. Archive with isActive=false instead.',
   })
   @ApiParam({ name: 'id', description: 'Program ID' })
   remove(@Param('id') id: string, @CurrentUser() user: any) {
@@ -245,7 +413,8 @@ export class UserProgramsController {
   @Get('library')
   @ApiOperation({
     summary: 'Get Program Library',
-    description: 'Returns all published programs. isLocked=true means premium required. isActiveForUser=true means this is the current program.',
+    description:
+      'Returns all published programs. isLocked=true means premium required. isActiveForUser=true means this is the current program.',
   })
   getLibrary(@CurrentUser() user: any) {
     return this.programsService.getLibrary(user.id);
@@ -255,7 +424,8 @@ export class UserProgramsController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Activate Program',
-    description: 'Sets a program as the user\'s active program. Resets to week 1, day 1.',
+    description:
+      "Sets a program as the user's active program. Resets to week 1, day 1.",
   })
   activate(@Body() dto: ActivateProgramDto, @CurrentUser() user: any) {
     return this.programsService.activateProgram(user.id, dto);
@@ -264,7 +434,8 @@ export class UserProgramsController {
   @Get('active')
   @ApiOperation({
     summary: 'Get Active Program',
-    description: 'Returns the full active program with current week/day position and all exercises.',
+    description:
+      'Returns the full active program with current week/day position and all exercises.',
   })
   getActive(@CurrentUser() user: any) {
     return this.programsService.getUserActiveProgram(user.id);

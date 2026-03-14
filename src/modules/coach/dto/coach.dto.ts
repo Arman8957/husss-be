@@ -13,6 +13,9 @@ import {
   ValidateNested,
   IsPositive,
   Length,
+  ArrayMinSize,
+  ArrayMaxSize,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
@@ -175,7 +178,7 @@ export class SubmitParqDto {
 
   @IsOptional()
   @IsString()
-  boneJointDetails?: string; // "write down" field from screenshot
+  boneJointDetails?: string; 
 
   @IsOptional()
   @IsBoolean()
@@ -269,7 +272,6 @@ export class SetupClientProfileDto {
 // ─── BODY DIMENSION (client submits, coach can view) ─────────────────────────
 
 export class CreateBodyDimensionDto {
-
   @IsDateString()
   date!: string; // "2026-02-15"
 
@@ -311,6 +313,17 @@ export class CreateBodyDimensionDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsEnum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY'])
+  gender?: 'MALE' | 'FEMALE' | 'OTHER' | 'PREFER_NOT_TO_SAY';
+
+  @IsOptional()
+  @IsInt()
+  @Min(13)
+  @Max(120)
+  @Type(() => Number)
+  age?: number;
 }
 
 export class UpdateBodyDimensionDto extends PartialType(
@@ -354,4 +367,58 @@ export class UpdateReminderPreferencesDto {
   @IsOptional()
   @IsBoolean()
   smsReminders?: boolean; // 2h before session
+}
+
+// ── Send invitation email ─────────────────────────────────────────────────────
+/**
+ * POST /coach/invitations/:invitationId/send-email
+ * Body: { emails: ["alice@example.com", "bob@example.com"] }
+ *
+ * Up to 10 emails per call.
+ * The service auto-detects registered vs unregistered and tailors the email.
+ */
+export class SendInvitationEmailDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @IsEmail({}, { each: true })
+  emails!: string[];
+}
+
+// ── Update trainee info (coach edits notes / gym) ─────────────────────────────
+/**
+ * PATCH /coach/trainees/:clientProfileId
+ * All fields optional — partial update.
+ */
+export class UpdateTraineeDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  gymName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  gymLocation?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string; // coach's private notes about this trainee
+}
+
+// ── Restrict / restore trainee ────────────────────────────────────────────────
+/**
+ * PATCH /coach/trainees/:clientProfileId/restrict
+ * Body: { restrict: true, reason?: "..." }  → SUSPEND the trainee
+ *       { restrict: false }                  → RESTORE the trainee
+ */
+export class RestrictTraineeDto {
+  @IsBoolean()
+  restrict!: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string; // shown in email + in-app notification
 }

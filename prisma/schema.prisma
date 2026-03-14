@@ -394,6 +394,7 @@ model ClientProfile {
   status      ClientStatus @default(PENDING_PAR_Q)
   gymName     String?
   gymLocation String?
+  notes String? 
 
   // Joined via invitation
   invitationId String?
@@ -450,9 +451,20 @@ model ParqSubmission {
   // Blood Pressure & Cardiovascular
   hasHighBloodPressure    Boolean
   doctorLimitedActivity   Boolean
+  surgeryDetails         String?
+  hasDiabetesOrMetabolic  Boolean?
+  prescriptionDetails    String?
+  hasAsthmaOrRespiratory  Boolean?
+  hasNeurologicalCondition Boolean?
+  isPregnantOrRecentBirth  Boolean?
+  signatureData    String?
+  signatureName   String?
+  doctorClearanceFileUrl  String?
   // Musculoskeletal
   hasBoneJointProblem     Boolean
   takingPrescription      Boolean
+  boneJointDetails        String?
+  hadSurgeryLast12Months  Boolean?
   // Other
   hasOtherReason          Boolean
   otherReasonDetails      String?
