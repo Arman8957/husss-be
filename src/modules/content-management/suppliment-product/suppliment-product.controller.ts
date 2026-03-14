@@ -95,9 +95,9 @@ export class SupplimentProductController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete Supplement Product' })
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
+  // @ApiBearerAuth()
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  // @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @ApiParam({
     name: 'id',
     example: 'clx123abc456',
@@ -113,9 +113,9 @@ export class SupplimentProductController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update Supplement Product' })
   @ApiConsumes('multipart/form-data')
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
+  // @ApiBearerAuth()
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  // @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @ApiParam({
     name: 'id',
     example: 'clx123abc456',
