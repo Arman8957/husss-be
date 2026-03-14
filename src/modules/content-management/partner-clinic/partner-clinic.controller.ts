@@ -30,12 +30,12 @@ export class PartnerClinicController {
 
   @Post()
   @ApiOperation({ summary: 'Create Partner Clinic (Only Can Admin)' })
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
+  // @ApiBearerAuth()
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  // @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @ApiResponse({ status: 201, description: 'Created successfully' })
-  create(@Body() dto: CreatePartnerClinicDto) {
-    return this.service.create(dto);
+  async create(@Body() dto: CreatePartnerClinicDto) {
+    return await this.service.create(dto);
   }
 
   @Get()

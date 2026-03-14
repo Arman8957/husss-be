@@ -16,9 +16,9 @@ export class SupplimentProductController {
   @Post('create')
   @ApiOperation({ summary: 'Create Supplement Product' })
   @ApiConsumes('multipart/form-data')
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
+  // @ApiBearerAuth()
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  // @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @ApiBody({
     schema: {
       type: 'object',
