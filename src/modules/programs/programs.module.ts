@@ -13,6 +13,9 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { ProgramsService } from './programs.service';
 import { TrainingMethodsService } from './training-method/training-methods.service';
 import { WorkoutService } from './workout/workout.service';
+import { PrismaModule } from 'src/prisma/prisma.module';
+import { TrainingMethodsModule } from './training-method/training-methods.module';
+import { CloudinaryModule } from 'src/common/cloudinary/cloudinary.module';
 
 // Training Methods
 
@@ -21,6 +24,11 @@ import { WorkoutService } from './workout/workout.service';
 
 
 @Module({
+  imports: [
+    PrismaModule,
+    TrainingMethodsModule,  
+    CloudinaryModule,      
+  ],
   controllers: [
     AdminProgramsController,
     UserProgramsController,
