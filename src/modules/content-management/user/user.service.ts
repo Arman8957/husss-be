@@ -186,7 +186,20 @@ export class UserService {
             },
             userActivityLog,
             mostRecentActiveUser,
-            mostPopulerProgramme: mostPopulerProgramme
+            mostPopulerProgramme: [
+                {
+                    "programId": "prog1",
+                    "name": "Full Body Strength",
+                    "users": 12,
+                    "completionRate": 75
+                },
+                {
+                    "programId": "prog2",
+                    "name": "Push Pull Legs",
+                    "users": 8,
+                    "completionRate": 50
+                }
+            ]
         }
 
     }
