@@ -94,6 +94,12 @@ export class UserService {
                 limit,
                 totalPage: Math.ceil(totalUser / limit),
             },
+            dashboardData: {
+                lastMonthUserCount: lastMonthUserCount,
+                totalUserCount: totalUserCount,
+                totalActiveUser: totalActiveUser,
+                premiumUser: premiumUser
+            },
             data: users,
         };
     }
