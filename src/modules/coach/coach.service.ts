@@ -919,91 +919,115 @@ export class CoachService {
   //     requiresDoctorClearance,
   //   };
   // }
-   async submitParq(clientUserId: string, dto: SubmitParqDto) {
+  async submitParq(clientUserId: string, dto: SubmitParqDto) {
     const clientProfile = await this.getClientProfileOrThrow(clientUserId);
     // Flag any condition that may need doctor clearance before training
     const requiresDoctorClearance =
-      dto.hasHeartCondition        ||
-      dto.chestPainDuringActivity  ||
-      dto.chestPainAtRest          ||
-      dto.losesBalanceDizziness    ||
-      dto.hasHighBloodPressure     ||
-      dto.hadSurgeryLast12Months   ||  
-      dto.hasDiabetesOrMetabolic   || 
-      dto.hasAsthmaOrRespiratory   ||   
-      dto.hasNeurologicalCondition || 
-      dto.isPregnantOrRecentBirth;      
+      dto.hasHeartCondition ||
+      dto.chestPainDuringActivity ||
+      dto.chestPainAtRest ||
+      dto.losesBalanceDizziness ||
+      dto.hasHighBloodPressure ||
+      dto.hadSurgeryLast12Months ||
+      dto.hasDiabetesOrMetabolic ||
+      dto.hasAsthmaOrRespiratory ||
+      dto.hasNeurologicalCondition ||
+      dto.isPregnantOrRecentBirth;
     const submission = await this.prisma.parqSubmission.create({
       data: {
-        userId:                  clientUserId,
-        clientProfileId:         clientProfile.id,
+        userId: clientUserId,
+        clientProfileId: clientProfile.id,
         // ── General Health ──────────────────────────────────────────────
-        hasHeartCondition:       dto.hasHeartCondition,
+        hasHeartCondition: dto.hasHeartCondition,
         chestPainDuringActivity: dto.chestPainDuringActivity,
-        chestPainAtRest:         dto.chestPainAtRest,
-        losesBalanceDizziness:   dto.losesBalanceDizziness,
+        chestPainAtRest: dto.chestPainAtRest,
+        losesBalanceDizziness: dto.losesBalanceDizziness,
         // ── Blood Pressure & Cardiovascular ────────────────────────────
-        hasHighBloodPressure:    dto.hasHighBloodPressure,
-        doctorLimitedActivity:   dto.doctorLimitedActivity,
+        hasHighBloodPressure: dto.hasHighBloodPressure,
+        doctorLimitedActivity: dto.doctorLimitedActivity,
         // ── Musculoskeletal ─────────────────────────────────────────────
-        hasBoneJointProblem:     dto.hasBoneJointProblem,
-        boneJointDetails:        dto.boneJointDetails        ?? null,  
-        hadSurgeryLast12Months:  dto.hadSurgeryLast12Months  ?? false, 
-        surgeryDetails:          dto.surgeryDetails           ?? null, 
+        hasBoneJointProblem: dto.hasBoneJointProblem,
+        boneJointDetails: dto.boneJointDetails ?? null,
+        hadSurgeryLast12Months: dto.hadSurgeryLast12Months ?? false,
+        surgeryDetails: dto.surgeryDetails ?? null,
         // ── Metabolic & Medical ─────────────────────────────────────────
-        hasDiabetesOrMetabolic:  dto.hasDiabetesOrMetabolic  ?? false, 
-        takingPrescription:      dto.takingPrescription,
-        prescriptionDetails:     dto.prescriptionDetails      ?? null, 
+        hasDiabetesOrMetabolic: dto.hasDiabetesOrMetabolic ?? false,
+        takingPrescription: dto.takingPrescription,
+        prescriptionDetails: dto.prescriptionDetails ?? null,
         // ── Respiratory & Neurological ──────────────────────────────────
-        hasAsthmaOrRespiratory:   dto.hasAsthmaOrRespiratory  ?? false, 
+        hasAsthmaOrRespiratory: dto.hasAsthmaOrRespiratory ?? false,
         hasNeurologicalCondition: dto.hasNeurologicalCondition ?? false,
-        isPregnantOrRecentBirth:  dto.isPregnantOrRecentBirth  ?? false, 
+        isPregnantOrRecentBirth: dto.isPregnantOrRecentBirth ?? false,
         // ── Other ───────────────────────────────────────────────────────
-        hasOtherReason:          dto.hasOtherReason,
-        otherReasonDetails:      dto.otherReasonDetails       ?? null,
-        doctorClearanceFileUrl:  dto.doctorClearanceFileUrl   ?? null,  
+        hasOtherReason: dto.hasOtherReason,
+        otherReasonDetails: dto.otherReasonDetails ?? null,
+        doctorClearanceFileUrl: dto.doctorClearanceFileUrl ?? null,
         // ── Signature ───────────────────────────────────────────────────
         // signatureData (base64/URL) takes priority; fall back to typed name
-        signature:               dto.signatureData ?? dto.signatureName ?? null,
-        signedAt:                new Date(),
-        isApproved:              false,
+        signature: dto.signatureData ?? dto.signatureName ?? null,
+        signedAt: new Date(),
+        isApproved: false,
       },
     });
- 
-    const coachUserId = await this.getUserIdFromCoachProfileId(this.prisma as any, clientProfile.coachId);
+
+    const coachUserId = await this.getUserIdFromCoachProfileId(
+      this.prisma as any,
+      clientProfile.coachId,
+    );
     await this.prisma.notification.create({
-      data: { userId: coachUserId, type: 'PAR_Q_REVIEW', title: 'New PAR-Q Submission', body: 'A client has submitted their health questionnaire for review.', data: { parqId: submission.id, clientProfileId: clientProfile.id } },
+      data: {
+        userId: coachUserId,
+        type: 'PAR_Q_REVIEW',
+        title: 'New PAR-Q Submission',
+        body: 'A client has submitted their health questionnaire for review.',
+        data: { parqId: submission.id, clientProfileId: clientProfile.id },
+      },
     });
- 
+
     // Email coach
     const [coachUser, clientUser] = await Promise.all([
-      this.prisma.user.findUnique({ where: { id: coachUserId }, select: { name: true, email: true } }),
-      this.prisma.user.findUnique({ where: { id: clientUserId }, select: { name: true } }),
+      this.prisma.user.findUnique({
+        where: { id: coachUserId },
+        select: { name: true, email: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: clientUserId },
+        select: { name: true },
+      }),
     ]);
     const dashboardUrl = `${process.env.APP_BASE_URL ?? 'https://app.monsterconfusion.com'}/coach/parq`;
     if (coachUser?.email) {
-      this.emailService.sendParqSubmittedEmail(coachUser.email, coachUser.name ?? 'Coach', clientUser?.name ?? 'A client', dashboardUrl)
-        .catch((err) => this.logger.error('Failed to send PAR-Q submitted email:', err));
+      this.emailService
+        .sendParqSubmittedEmail(
+          coachUser.email,
+          coachUser.name ?? 'Coach',
+          clientUser?.name ?? 'A client',
+          dashboardUrl,
+        )
+        .catch((err) =>
+          this.logger.error('Failed to send PAR-Q submitted email:', err),
+        );
     }
- 
+
     return {
       message: requiresDoctorClearance
         ? 'PAR-Q submitted. Your coach will review it. Some answers may require doctor clearance.'
         : 'PAR-Q submitted successfully. Your coach will review and approve it shortly.',
-      submissionId: submission.id, requiresDoctorClearance,
+      submissionId: submission.id,
+      requiresDoctorClearance,
     };
   }
- 
+
   async getClientParqHistory(clientUserId: string) {
     const clientProfile = await this.getClientProfileOrThrow(clientUserId);
     return this.prisma.parqSubmission.findMany({
-      where:   { clientProfileId: clientProfile.id },
+      where: { clientProfileId: clientProfile.id },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   //============single id ======================
-    async getClientParqById(clientUserId: string, submissionId: string) {
+  async getClientParqById(clientUserId: string, submissionId: string) {
     const clientProfile = await this.getClientProfileOrThrow(clientUserId);
     const submission = await this.prisma.parqSubmission.findFirst({
       where: { id: submissionId, clientProfileId: clientProfile.id },
@@ -1011,7 +1035,7 @@ export class CoachService {
     if (!submission) throw new NotFoundException('PAR-Q submission not found');
     return submission;
   }
- 
+
   // async reviewParq(coachUserId: string, submissionId: string, dto: ReviewParqDto) {
   //   const coachProfile = await this.getCoachProfileOrThrow(coachUserId);
   //   const submission = await this.prisma.parqSubmission.findFirst({
@@ -1032,18 +1056,16 @@ export class CoachService {
   //     });
   //     return { ...updated, message: dto.approved ? 'PAR-Q approved. Client can now book sessions.' : 'PAR-Q rejected. Client has been notified.' };
   //   });
- 
+
   //   // Email client
   //   const coachUser = await this.prisma.user.findUnique({ where: { id: coachUserId }, select: { name: true } });
   //   this.emailService.sendParqReviewedEmail(
   //     submission.user.email, submission.user.name ?? 'there',
   //     coachUser?.name ?? 'Your coach', dto.approved, dto.notes,
   //   ).catch((err) => this.logger.error('Failed to send PAR-Q reviewed email:', err));
- 
+
   //   return result;
   // }
- 
-
 
   async reviewParq(
     coachUserId: string,
@@ -1150,66 +1172,64 @@ export class CoachService {
   }
 
   // BODY DIMENSIONS
- async createBodyDimension(userId: string, dto: CreateBodyDimensionDto) {
-  // Check duplicate measurement for the same date
-  const existing = await this.prisma.bodyDimension.findFirst({
-    where: { userId, date: new Date(dto.date) },
-  });
+  async createBodyDimension(userId: string, dto: CreateBodyDimensionDto) {
+    // Check duplicate measurement for the same date
+    const existing = await this.prisma.bodyDimension.findFirst({
+      where: { userId, date: new Date(dto.date) },
+    });
 
-  if (existing) {
-    throw new ConflictException(
-      `A measurement for ${dto.date} already exists. Use PATCH to update it.`,
-    );
-  }
+    if (existing) {
+      throw new ConflictException(
+        `A measurement for ${dto.date} already exists. Use PATCH to update it.`,
+      );
+    }
 
-  // Run both writes in a transaction so they succeed or fail together
-  const [bodyDimension] = await this.prisma.$transaction([
+    // Run both writes in a transaction so they succeed or fail together
+    const [bodyDimension] = await this.prisma.$transaction([
+      // 1. Create BodyDimension row
+      this.prisma.bodyDimension.create({
+        data: {
+          userId,
+          date: new Date(dto.date),
+          weight: dto.weight ?? null,
+          weightUnit: (dto.weightUnit as any) ?? 'KG',
+          measureUnit: (dto.measureUnit as any) ?? 'CM',
+          height: dto.height ?? null,
+          waist: dto.waist ?? null,
+          leg: dto.leg ?? null,
+          arm: dto.arm ?? null,
+          bodyFatPercent: dto.bodyFatPercent ?? null,
+          notes: dto.notes ?? null,
+        },
+      }),
 
-    // 1. Create BodyDimension row
-    this.prisma.bodyDimension.create({
-      data: {
-        userId,
-        date:          new Date(dto.date),
-        weight:        dto.weight        ?? null,
-        weightUnit:    (dto.weightUnit   as any) ?? 'KG',
-        measureUnit:   (dto.measureUnit  as any) ?? 'CM',
-        height:        dto.height        ?? null,
-        waist:         dto.waist         ?? null,
-        leg:           dto.leg           ?? null,
-        arm:           dto.arm           ?? null,
-        bodyFatPercent: dto.bodyFatPercent ?? null,
-        notes:         dto.notes         ?? null,
-      },
-    }),
+      // 2. Update User.gender and User.age only if provided
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          ...(dto.gender !== undefined && { gender: dto.gender as any }),
+          ...(dto.age !== undefined && { age: dto.age }),
+        },
+        select: {
+          id: true,
+          gender: true,
+          age: true,
+        },
+      }),
+    ]);
 
-    // 2. Update User.gender and User.age only if provided
-    this.prisma.user.update({
+    // Return the body dimension enriched with the user's current gender + age
+    const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      data: {
-        ...(dto.gender !== undefined && { gender: dto.gender as any }),
-        ...(dto.age    !== undefined && { age:    dto.age }),
-      },
-      select: {
-        id:     true,
-        gender: true,
-        age:    true,
-      },
-    }),
+      select: { gender: true, age: true },
+    });
 
-  ]);
-
-  // Return the body dimension enriched with the user's current gender + age
-  const user = await this.prisma.user.findUnique({
-    where:  { id: userId },
-    select: { gender: true, age: true },
-  });
-
-  return {
-    ...bodyDimension,
-    gender: user?.gender ?? null,
-    age:    user?.age    ?? null,
-  };
-}
+    return {
+      ...bodyDimension,
+      gender: user?.gender ?? null,
+      age: user?.age ?? null,
+    };
+  }
 
   async updateBodyDimension(
     userId: string,
@@ -1342,9 +1362,25 @@ export class CoachService {
           scheduledAt: { gt: new Date() },
         },
         orderBy: { scheduledAt: 'asc' },
-        take: 5,
+        take: 10,
         include: {
-          availability: { select: { gymName: true, location: true } },
+         
+          availability: {
+            select: {
+              gymName: true,
+              location: true,
+              startTime: true,
+              endTime: true,
+            },
+          },
+        
+          coach: {
+            select: {
+              user: { select: { name: true, avatar: true } },
+              gymName: true,
+              gymLocation: true,
+            },
+          },
         },
       }),
       this.prisma.coachSession.findMany({
@@ -1370,7 +1406,52 @@ export class CoachService {
     };
   }
 
+  // async getMyCoachInfo(clientUserId: string) {
+
+  //   const clientProfile = await this.getClientProfileOrThrow(clientUserId);
+  //   const coach = await this.prisma.coachProfile.findUnique({
+  //     where: { id: clientProfile.coachId },
+  //     include: { user: { select: { name: true, email: true, avatar: true } } },
+  //   });
+  //   if (!coach) throw new NotFoundException('Coach not found');
+  //   const [upcomingSessions, completedSessions] = await Promise.all([
+  //     this.prisma.coachSession.findMany({
+  //       where: {
+  //         clientProfileId: clientProfile.id,
+  //         status: { in: ['CONFIRMED', 'REQUESTED'] },
+  //         scheduledAt: { gt: new Date() },
+  //       },
+  //       orderBy: { scheduledAt: 'asc' },
+  //       take: 5,
+  //       include: {
+  //         availability: { select: { gymName: true, location: true } },
+  //       },
+  //     }),
+  //     this.prisma.coachSession.findMany({
+  //       where: { clientProfileId: clientProfile.id, status: 'COMPLETED' },
+  //       orderBy: { completedAt: 'desc' },
+  //       take: 5,
+  //     }),
+  //   ]);
+  //   return {
+  //     coach: {
+  //       id: coach.id,
+  //       name: coach.user.name,
+  //       email: coach.user.email,
+  //       avatar: coach.user.avatar,
+  //       gymName: coach.gymName,
+  //       gymLocation: coach.gymLocation,
+  //       bio: coach.bio,
+  //       rating: coach.rating,
+  //     },
+  //     clientStatus: clientProfile.status,
+  //     upcomingSessions,
+  //     completedSessions,
+  //   };
+  // }
+
   // REMINDERS
+
   async updateReminderPreferences(
     userId: string,
     dto: UpdateReminderPreferencesDto,

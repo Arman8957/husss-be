@@ -373,11 +373,40 @@ export class ClientCoachController {
 
   // Reminders
   /** GET /api/v1/client/reminders */
-  @Get('reminders')
+  // @Get('reminders')
+  // async getReminders(@CurrentUser() user: any) {
+  //   const info = await this.coachService.getMyCoachInfo(user.id);
+  //   return { upcomingSessions: info.upcomingSessions };
+  // }
+
+    @Get('reminders')
   async getReminders(@CurrentUser() user: any) {
     const info = await this.coachService.getMyCoachInfo(user.id);
-    return { upcomingSessions: info.upcomingSessions };
+    return {
+      upcomingSessions: info.upcomingSessions.map((s: any) => ({
+        id:              s.id,
+        status:          s.status,
+        sessionType:     s.sessionType,
+        scheduledAt:     s.scheduledAt,
+        durationMinutes: s.durationMinutes,
+        notes:           s.notes,
+        confirmedAt:     s.confirmedAt,
+        startTime:       s.availability?.startTime  ?? null,
+        endTime:         s.availability?.endTime    ?? null,
+    
+        coachName:       s.coach?.user?.name        ?? null,
+        coachAvatar:     s.coach?.user?.avatar      ?? null,
+        // venue info
+        gymName:         s.availability?.gymName    ?? s.coach?.gymName    ?? null,
+        location:        s.availability?.location   ?? s.coach?.gymLocation ?? null,
+      })),
+      // summary counts
+      total:     info.upcomingSessions.length,
+      confirmed: info.upcomingSessions.filter((s: any) => s.status === 'CONFIRMED').length,
+      requested: info.upcomingSessions.filter((s: any) => s.status === 'REQUESTED').length,
+    };
   }
+ 
 
   /** GET /api/v1/client/reminders/preferences */
   @Get('reminders/preferences')
