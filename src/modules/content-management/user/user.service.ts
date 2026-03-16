@@ -98,5 +98,7 @@ export class UserService {
         };
     }
 
+    async deleteUser(userId: string) {
+    }
 
 }
