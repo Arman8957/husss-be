@@ -34,4 +34,11 @@ export class UserController {
     );
   }
 
+
+  @Get("activity-tracking")
+  @ApiOperation({ summary: "All User Activity Tracking" })
+  async allUserActivityTracking() {
+    return await this.userService.userActivityLog()
+  }
+
 }

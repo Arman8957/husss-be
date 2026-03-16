@@ -84,7 +84,8 @@ export class UserService {
                 isPremium: true,
                 lastLoginAt: true,
                 createdAt: true,
-            },
+                coachProfile: true
+            }
         });
 
         return {
@@ -102,9 +103,106 @@ export class UserService {
             },
             data: users,
         };
+    };
+
+
+
+    async getMostPopularPrograms() {
+        const startOfWeek = new Date();
+        startOfWeek.setDate(startOfWeek.getDate() - 7);
+
+
+        const userPrograms = await this.prisma.userProgram.findMany({
+            where: {
+                startedAt: { gte: startOfWeek }
+            }
+        });
+
+
+        const programCounts: Record<
+            string,
+            { users: number; completed: number }
+        > = {};
+
+        for (const up of userPrograms) {
+            if (!programCounts[up.programId]) {
+                programCounts[up.programId] = { users: 0, completed: 0 };
+            }
+            programCounts[up.programId].users += 1;
+            if (up.isCompleted) programCounts[up.programId].completed += 1;
+        }
+
+
+        const programIds = Object.keys(programCounts);
+        const programs = await this.prisma.program.findMany({
+            where: { id: { in: programIds }, isPublished: true },
+            select: { id: true, name: true }
+        });
+
+        const result = programs
+            .map(p => {
+                const stats = programCounts[p.id];
+                return {
+                    programId: p.id,
+                    name: p.name,
+                    users: stats.users,
+                    completionRate: Math.round((stats.completed / stats.users) * 100)
+                };
+            })
+            .sort((a, b) => b.users - a.users)
+            .slice(0, 4);
+
+        return result;
     }
 
-    async deleteUser(userId: string) {
+
+
+    async userActivityLog() {
+        const userActivityLog = await this.prisma.userActivityLog.findMany({
+            take: 15,
+            orderBy: {
+                createdAt: "desc"
+            }
+        });
+
+        const mostRecentActiveUser = await this.prisma.user.findMany({
+            where: {
+                isActive: true,
+                emailVerified: true
+            },
+            orderBy: {
+                lastLoginAt: "desc"
+            },
+            take: 20
+        });
+
+        const mostPopulerProgramme = await this.getMostPopularPrograms();
+
+        return {
+            meta: {
+                workoutCompliteToday: 186,
+                activeSession: 519,
+                avgSessionTime: 41
+            },
+            userActivityLog,
+            mostRecentActiveUser,
+            mostPopulerProgramme: mostPopulerProgramme
+        }
+
     }
 
 }
+
+
+// model UserActivityLog {
+//   id        String           @id @default(cuid())
+//   userId    String
+//   type      UserActivityType
+//   meta      Json? // e.g. { programName: "Monster Mass Builder" }
+//   createdAt DateTime         @default(now())
+
+//   @@index([userId])
+//   @@index([type])
+//   @@index([createdAt])
+//   @@map("user_activity_logs")
+// }
