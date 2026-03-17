@@ -1,4 +1,4 @@
-// src/modules/training-methods/training-methods.service.ts
+
 import {
   Injectable,
   NotFoundException,
@@ -122,6 +122,10 @@ export class TrainingMethodsService {
       .create({ data: { adminUserId, action, targetType: 'TrainingMethod', targetId, details } })
       .catch(() => {});
   }
+
+
+  //============users 
+  
 }
 
 
