@@ -114,6 +114,7 @@ export async function bootstrap() {
     'https://hussshehata.vercel.app',
     'ionic://localhost',
     /^exp:\/\/.*/,
+    /^https:\/\/[\w-]+\.vercel\.app$/, 
     // Always allow the Render host if we're on Render
     ...(isProduction ? [`https://${renderHost}`] : []),
     ...extraOrigins,
