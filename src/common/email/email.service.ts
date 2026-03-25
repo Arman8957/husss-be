@@ -393,6 +393,71 @@ export class EmailService {
     });
   }
 
+  async sendPasswordOtpEmail(
+    email: string,
+    name:  string,
+    otp:   string,
+  ): Promise<boolean> {
+    return this.sendEmail({
+      from:    this.configService.get('smtp.from'),
+      to:      email,
+      subject: '🔐 Your HUSSS Password Reset Code',
+      html: `
+        <!DOCTYPE html><html><head><style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+        </style></head>
+        <body style="background:#f3f4f6;padding:32px 0;">
+          <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+ 
+            <!-- Header -->
+            <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:32px;text-align:center;">
+              <div style="font-size:48px;margin-bottom:8px;">🔐</div>
+              <h1 style="color:#fff;margin:0;font-size:24px;">Password Reset Code</h1>
+              <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:14px;">HUSSS Account Security</p>
+            </div>
+ 
+            <!-- Body -->
+            <div style="padding:36px;">
+              <p style="color:#374151;font-size:15px;margin-top:0;">Hi <strong>${name}</strong>,</p>
+              <p style="color:#374151;">You requested a password reset. Enter this code in the app:</p>
+ 
+              <!-- OTP Box -->
+              <div style="text-align:center;margin:32px 0;">
+                <div style="display:inline-block;background:#f3f4f6;border:2px solid #e5e7eb;border-radius:12px;padding:20px 40px;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:2px;">Your OTP Code</p>
+                  <p style="margin:0;font-size:42px;font-weight:700;letter-spacing:12px;color:#111827;font-family:monospace;">${otp}</p>
+                </div>
+              </div>
+ 
+              <!-- Warnings -->
+              <div style="background:#fef3c7;border-left:4px solid #f59e0b;border-radius:4px;padding:14px 16px;margin:24px 0;">
+                <p style="margin:0;color:#92400e;font-size:14px;">
+                  ⏰ <strong>Expires in 10 minutes.</strong>
+                  Do not share this code with anyone.
+                </p>
+              </div>
+ 
+              <p style="color:#6b7280;font-size:13px;margin-bottom:0;">
+                If you didn't request this, you can safely ignore this email.
+                Your password will not change.
+              </p>
+            </div>
+ 
+            <!-- Footer -->
+            <div style="background:#f9fafb;padding:16px;text-align:center;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;color:#9ca3af;font-size:12px;">
+                © ${new Date().getFullYear()} HUSSS. All rights reserved.
+                <br/>This email was sent to ${email}
+              </p>
+            </div>
+ 
+          </div>
+        </body></html>`,
+      text: `Your HUSSS password reset OTP: ${otp}\n\nExpires in 10 minutes. Do not share this code.\n\nIf you didn't request this, ignore this email.`,
+    });
+  }
+ 
+
   // ─── Trainee restricted / unrestricted ───────────────────────────────────
   /** Coach receives email when a client submits their PAR-Q */
   async sendParqSubmittedEmail(

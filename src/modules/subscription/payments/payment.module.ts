@@ -1,14 +1,18 @@
-// src/modules/payments/payment.module.ts
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { PaymentService    } from './payment.service';
-import { PaymentController } from './payment.controller';
-import { PrismaModule      } from 'src/prisma/prisma.module';
+// src/modules/payments/iap.module.ts
+import { Module }        from '@nestjs/common';
+
+import { PrismaModule }  from 'src/prisma/prisma.module';
+import { IAPController } from './payment.controller';
+import { IAPService } from './payment.service';
 
 @Module({
-  imports:     [PrismaModule, ConfigModule],
-  controllers: [PaymentController],
-  providers:   [PaymentService],
-  exports:     [PaymentService],
+  imports:     [PrismaModule],
+  controllers: [IAPController],
+  providers:   [IAPService],
+  exports:     [IAPService],
 })
-export class PaymentModule {}
+export class IAPModule {}
+
+// ADD to app.module.ts:
+// import { IAPModule } from './modules/payments/iap.module';
+// imports: [..., IAPModule]

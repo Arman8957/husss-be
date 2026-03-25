@@ -40,6 +40,8 @@ const MAX_SESSIONS_PER_USER = 5;
 const ACCESS_TOKEN_EXPIRY  = '24h';
 const REFRESH_TOKEN_EXPIRY = '30d';
 
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES — imported from shared file so controller can reference them too
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,6 +56,18 @@ interface FailRecord {
 // ─────────────────────────────────────────────────────────────────────────────
 // REUSABLE DB SELECT — includes profile relations for context building
 // ─────────────────────────────────────────────────────────────────────────────
+
+interface OtpRecord {
+  otpHash:         string;        // SHA-256 of the 6-digit OTP
+  expiresAt:       number;        // epoch ms — OTP valid until
+  issuedAt:        number;        // epoch ms — for rate limiting
+  attempts:        number;        // failed verify attempts
+  verified:        boolean;       // true after step 2 success
+  userId:          string;        // user to update on reset
+  resetTokenHash?: string;        // SHA-256 of resetToken (set after verify)
+  resetExpiresAt?: number;        // epoch ms — resetToken valid until
+}
+ 
 
 const USER_SAFE_SELECT = {
   id:            true,
@@ -94,6 +108,10 @@ const failMap = new Map<string, FailRecord>();
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  MAX_OTP_ATTEMPTS!: number;
+  OTP_RESET_TTL_MS!: number;
+
+  private readonly OTP_TTL_MS       = 10 * 60 * 1000; // 10 min — OTP validity
 
   constructor(
     private readonly prisma:            PrismaService,
@@ -705,28 +723,151 @@ export class AuthService {
     return { message: 'Email verified successfully' };
   }
 
+
+  async verifyPasswordOtp(email: string, otp: string): Promise<{
+    message:    string;
+    resetToken: string;
+    expiresIn:  number;
+  }> {
+    const normalizedEmail = email.toLowerCase().trim();
+ 
+    const cfg = await this.prisma.appConfig.findUnique({
+      where: { key: `otp:${normalizedEmail}` },
+    });
+    if (!cfg) {
+      throw new BadRequestException('No OTP found for this email. Please request a new one.');
+    }
+ 
+    const record = JSON.parse(cfg.value) as OtpRecord;
+ 
+    if (Date.now() > record.expiresAt) {
+      await this.prisma.appConfig.delete({ where: { key: `otp:${normalizedEmail}` } }).catch(() => {});
+      throw new BadRequestException('OTP has expired. Please request a new one.');
+    }
+ 
+    if (record.attempts >= this.MAX_OTP_ATTEMPTS) {
+      await this.prisma.appConfig.delete({ where: { key: `otp:${normalizedEmail}` } }).catch(() => {});
+      throw new BadRequestException('Too many incorrect attempts. Please request a new OTP.');
+    }
+ 
+    const inputHash = crypto.createHash('sha256').update(otp.trim()).digest('hex');
+    if (inputHash !== record.otpHash) {
+      record.attempts += 1;
+      await this.prisma.appConfig.update({
+        where: { key: `otp:${normalizedEmail}` },
+        data:  { value: JSON.stringify(record) },
+      });
+      const remaining = this.MAX_OTP_ATTEMPTS - record.attempts;
+      throw new BadRequestException(`Incorrect OTP. ${remaining} attempt(s) remaining.`);
+    }
+ 
+    // OTP correct — issue a short-lived resetToken
+    const resetToken     = crypto.randomBytes(32).toString('hex');
+    const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+ 
+    record.verified       = true;
+    record.resetTokenHash = resetTokenHash;
+    record.resetExpiresAt = Date.now() + this.OTP_RESET_TTL_MS;
+ 
+    await this.prisma.appConfig.update({
+      where: { key: `otp:${normalizedEmail}` },
+      data:  { value: JSON.stringify(record) },
+    });
+ 
+    this.logger.log(`[OTP] Verified for ${normalizedEmail}`);
+ 
+    return {
+      message:   'OTP verified. Use the resetToken to set your new password.',
+      resetToken,          // pass this to Step 3
+      expiresIn: 900,      // 15 minutes
+    };
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // PASSWORD
   // ══════════════════════════════════════════════════════════════════════════
+  
+  // async requestPasswordReset(email: string) {
+  //   const user = await this.prisma.user.findUnique({
+  //     where: { email: email.toLowerCase().trim() },
+  //   });
+  //   if (!user) {
+  //     return {
+  //       message: 'If an account exists with this email, reset instructions have been sent',
+  //     };
+  //   }
+  //   if (user.provider !== AuthProvider.EMAIL) {
+  //     throw new BadRequestException(
+  //       `This account uses ${user.provider} login. Password reset is not available.`,
+  //     );
+  //   }
+  //   const token = this.tokenService.generatePasswordResetToken(user.id);
+  //   await this.emailService.sendPasswordResetEmail(user.email, user.name ?? 'User', token);
+  //   return { message: 'Password reset instructions sent to your email' };
+  // }
 
+
+ 
+  /**
+   * STEP 1 — Request OTP
+   * Sends a 6-digit OTP to the user's email. Rate-limited to 1 per 60s.
+   */
   async requestPasswordReset(email: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
-    });
+    const normalizedEmail = email.toLowerCase().trim();
+ 
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+    // Same response whether user exists or not (no enumeration)
     if (!user) {
-      return {
-        message: 'If an account exists with this email, reset instructions have been sent',
-      };
+      return { message: 'If an account with this email exists, a 6-digit OTP has been sent.' };
     }
     if (user.provider !== AuthProvider.EMAIL) {
       throw new BadRequestException(
-        `This account uses ${user.provider} login. Password reset is not available.`,
+        `This account uses ${user.provider} sign-in. Password reset is not available.`,
       );
     }
-    const token = this.tokenService.generatePasswordResetToken(user.id);
-    await this.emailService.sendPasswordResetEmail(user.email, user.name ?? 'User', token);
-    return { message: 'Password reset instructions sent to your email' };
+ 
+    // Rate limit: block if OTP was issued < 60 seconds ago
+    const existing = await this.prisma.appConfig.findUnique({
+      where: { key: `otp:${normalizedEmail}` },
+    });
+    if (existing) {
+      const stored = JSON.parse(existing.value) as OtpRecord;
+      const elapsed = Date.now() - stored.issuedAt;
+      if (elapsed < 60_000) {
+        const waitSecs = Math.ceil((60_000 - elapsed) / 1000);
+        throw new BadRequestException(
+          `Please wait ${waitSecs} second(s) before requesting a new OTP.`,
+        );
+      }
+    }
+ 
+    // Generate 6-digit OTP — store SHA-256 hash (never store plaintext)
+    const otp       = Math.floor(100_000 + Math.random() * 900_000).toString();
+    const otpHash   = crypto.createHash('sha256').update(otp).digest('hex');
+    const record: OtpRecord = {
+      otpHash,
+      expiresAt: Date.now() + this.OTP_TTL_MS,
+      issuedAt:  Date.now(),
+      attempts:  0,
+      verified:  false,
+      userId:    user.id,
+    };
+ 
+    await this.prisma.appConfig.upsert({
+      where:  { key: `otp:${normalizedEmail}` },
+      create: { key: `otp:${normalizedEmail}`, value: JSON.stringify(record), type: 'json', group: 'otp' },
+      update: { value: JSON.stringify(record) },
+    });
+ 
+    await this.emailService.sendPasswordOtpEmail(user.email, user.name ?? 'User', otp);
+    this.logger.log(`[OTP] Sent to ${normalizedEmail} — expires in 10 min`);
+ 
+    return {
+      message:   'A 6-digit OTP has been sent to your email. It expires in 10 minutes.',
+      expiresIn: 600, // seconds
+    };
   }
+ 
 
   async resetPassword(token: string, newPassword: string) {
     const result = this.tokenService.verifyToken(token, 'password_reset');

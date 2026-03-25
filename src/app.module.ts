@@ -23,6 +23,7 @@ import { SupplimentProductModule } from './modules/content-management/suppliment
 import { ProgrammeModule } from './modules/content-management/programme/programme.module';
 import { CoachModule } from './modules/coach/Coach.module';
 import { UserModule } from './modules/content-management/user/user.module';
+import { IAPModule } from './modules/subscription/payments/payment.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { UserModule } from './modules/content-management/user/user.module';
     ProgrammeModule,
     CoachModule,
     UserModule,
+    IAPModule,
   ],
   providers: [
 

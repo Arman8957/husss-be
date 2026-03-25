@@ -18,6 +18,11 @@ enum AuthProvider {
   APPLE
 }
 
+enum IAPPlatform {
+  APPLE
+  GOOGLE
+}
+
 enum UserRole {
   USER
   PREMIUM
@@ -267,6 +272,7 @@ model User {
 
   // Relations
   sessions            Session[]
+  iapReceipts         IAPReceipt[]
   subscription        Subscription?
   coachProfile        CoachProfile?
   clientProfile       ClientProfile?
@@ -337,12 +343,43 @@ model Subscription {
   maxClients           Int                @default(0) // 0 = free tier limit
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
+  iapPlatform          IAPPlatform?
+  iapOriginalTxId      String?
+  iapProductId         String?
+  iapEnvironment       String?
+  iapExpiresAt         DateTime?
+  iapAutoRenewing      Boolean?
+  iapReceipts          IAPReceipt[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([stripeCustomerId])
   @@index([status])
   @@map("subscriptions")
+}
+
+model IAPReceipt {
+  id              String           @id @default(cuid())
+  userId          String
+  platform        IAPPlatform
+  transactionId   String           @unique
+  productId       String
+  receiptData     String           @db.Text
+  verificationRaw String?          @db.Text
+  isValid         Boolean          @default(false)
+  environment     String
+  purchasedAt     DateTime
+  expiresAt       DateTime?
+  autoRenewing    Boolean?
+  plan            SubscriptionPlan @default(FREE)
+  subscriptionId  String?
+  createdAt       DateTime         @default(now())
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription    Subscription?    @relation(fields: [subscriptionId], references: [id])
+
+  @@index([userId])
+  @@index([platform, transactionId])
+  @@map("iap_receipts")
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -394,7 +431,7 @@ model ClientProfile {
   status      ClientStatus @default(PENDING_PAR_Q)
   gymName     String?
   gymLocation String?
-  notes String? 
+  notes       String?
 
   // Joined via invitation
   invitationId String?
@@ -440,40 +477,40 @@ model CoachInvitation {
 // ══════════════════════════════════════════════════════════════
 
 model ParqSubmission {
-  id                      String    @id @default(cuid())
-  userId                  String
-  clientProfileId         String
+  id                       String    @id @default(cuid())
+  userId                   String
+  clientProfileId          String
   // General Health
-  hasHeartCondition       Boolean
-  chestPainDuringActivity Boolean
-  chestPainAtRest         Boolean
-  losesBalanceDizziness   Boolean
+  hasHeartCondition        Boolean
+  chestPainDuringActivity  Boolean
+  chestPainAtRest          Boolean
+  losesBalanceDizziness    Boolean
   // Blood Pressure & Cardiovascular
-  hasHighBloodPressure    Boolean
-  doctorLimitedActivity   Boolean
-  surgeryDetails         String?
-  hasDiabetesOrMetabolic  Boolean?
-  prescriptionDetails    String?
-  hasAsthmaOrRespiratory  Boolean?
+  hasHighBloodPressure     Boolean
+  doctorLimitedActivity    Boolean
+  surgeryDetails           String?
+  hasDiabetesOrMetabolic   Boolean?
+  prescriptionDetails      String?
+  hasAsthmaOrRespiratory   Boolean?
   hasNeurologicalCondition Boolean?
   isPregnantOrRecentBirth  Boolean?
-  signatureData    String?
-  signatureName   String?
-  doctorClearanceFileUrl  String?
+  signatureData            String?
+  signatureName            String?
+  doctorClearanceFileUrl   String?
   // Musculoskeletal
-  hasBoneJointProblem     Boolean
-  takingPrescription      Boolean
-  boneJointDetails        String?
-  hadSurgeryLast12Months  Boolean?
+  hasBoneJointProblem      Boolean
+  takingPrescription       Boolean
+  boneJointDetails         String?
+  hadSurgeryLast12Months   Boolean?
   // Other
-  hasOtherReason          Boolean
-  otherReasonDetails      String?
+  hasOtherReason           Boolean
+  otherReasonDetails       String?
   // Signature & Date
-  signature               String? // base64 or URL
-  signedAt                DateTime?
-  isApproved              Boolean   @default(false)
-  reviewedByCoachAt       DateTime?
-  createdAt               DateTime  @default(now())
+  signature                String? // base64 or URL
+  signedAt                 DateTime?
+  isApproved               Boolean   @default(false)
+  reviewedByCoachAt        DateTime?
+  createdAt                DateTime  @default(now())
 
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   clientProfile ClientProfile @relation(fields: [clientProfileId], references: [id], onDelete: Cascade)
@@ -1178,17 +1215,17 @@ model ExecutionGuideline {
 // ══════════════════════════════════════════════════════════════
 
 model EssentialContent {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  content     String // rich text/markdown
-  imageUrl    String?
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  content      String // rich text/markdown
+  imageUrl     String?
   finalMessage String?
-  category    String? // "Health Foundation"
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  category     String? // "Health Foundation"
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@map("essential_contents")
 }

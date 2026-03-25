@@ -133,6 +133,12 @@ export class AuthController {
     return this.authService.verifyEmail(dto.token);
   }
 
+  @Post('password/verify-otp')
+  @HttpCode(HttpStatus.OK)
+  verifyOtp(@Body() body: { email: string; otp: string }) {
+    return this.authService.verifyPasswordOtp(body.email, body.otp);
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // PUBLIC — Password reset
   // ══════════════════════════════════════════════════════════════════════════

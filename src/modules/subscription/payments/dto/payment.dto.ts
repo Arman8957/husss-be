@@ -6,8 +6,10 @@ import {
   IsString,
   IsUrl,
   MaxLength,
+  IsNotEmpty,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ENUMS
@@ -81,3 +83,33 @@ export class CancelSubscriptionDto {
   @IsBoolean()
   atPeriodEnd?: boolean = true;
 }
+
+
+export class AppleVerifyDto {
+  @ApiProperty({ example: '1000000123456789', description: 'transaction.originalID from StoreKit 2' })
+  @IsString() @IsNotEmpty()
+  originalTransactionId!: string;
+ 
+  @ApiProperty({ example: 'com.husss.premium.monthly' })
+  @IsString() @IsNotEmpty()
+  productId!: string;
+ 
+  @ApiProperty({ example: 'eyJhbGciOiJFUzI1NiIsIng1Y...', description: 'transaction.jwsRepresentation from StoreKit 2' })
+  @IsString() @IsNotEmpty()
+  jwsTransaction!: string;
+}
+ 
+export class GoogleVerifyDto {
+  @ApiProperty({ example: 'bkdabcde...', description: 'purchase.getPurchaseToken() from Google Play Billing' })
+  @IsString() @IsNotEmpty()
+  purchaseToken!: string;
+ 
+  @ApiProperty({ example: 'GPA.1234-5678-9012-34567', description: 'purchase.getOrderId()' })
+  @IsString() @IsNotEmpty()
+  orderId!: string;
+ 
+  @ApiProperty({ example: 'husss_premium_monthly', description: 'Subscription ID from Google Play Console' })
+  @IsString() @IsNotEmpty()
+  productId!: string;
+}
+ 
