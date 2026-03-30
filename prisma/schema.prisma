@@ -421,6 +421,8 @@ model CoachProfile {
   @@map("coach_profiles")
 }
 
+//===
+
 // ══════════════════════════════════════════════════════════════
 // 5. CLIENT PROFILE – User who is coached
 // ══════════════════════════════════════════════════════════════
@@ -1133,6 +1135,16 @@ model HealthCheckItem {
 
   @@index([category])
   @@map("health_check_items")
+}
+
+// Extra Check category
+model HealthClinicChecker {
+  id          String   @id @default(cuid())
+  title       String // "Testosterone levels (free and total)"
+  items       String[]
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
 }
 
 // ══════════════════════════════════════════════════════════════

@@ -16,6 +16,8 @@ import { WorkoutService } from './workout/workout.service';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { TrainingMethodsModule } from './training-method/training-methods.module';
 import { CloudinaryModule } from 'src/common/cloudinary/cloudinary.module';
+import { ProgramAnalyticsController } from './analytics/programAnalytics.controller';
+import { ProgramAnalyticsService } from './analytics/programAnalytics.service';
 
 // Training Methods
 
@@ -37,6 +39,7 @@ import { CloudinaryModule } from 'src/common/cloudinary/cloudinary.module';
     AdminTrainingMethodsController,
     UserTrainingMethodsController,
     WorkoutController,
+    ProgramAnalyticsController,
   ],
   providers: [
     PrismaService,
@@ -44,6 +47,7 @@ import { CloudinaryModule } from 'src/common/cloudinary/cloudinary.module';
     ExercisesService,
     TrainingMethodsService,
     WorkoutService,
+    ProgramAnalyticsService,
   ],
   exports: [
     ProgramsService,
