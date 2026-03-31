@@ -24,6 +24,7 @@ import { ProgrammeModule } from './modules/content-management/programme/programm
 import { CoachModule } from './modules/coach/Coach.module';
 import { UserModule } from './modules/content-management/user/user.module';
 import { IAPModule } from './modules/subscription/payments/payment.module';
+import { HealthMarkersModule } from './modules/content-management/health-markers/health-markers.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { IAPModule } from './modules/subscription/payments/payment.module';
     CoachModule,
     UserModule,
     IAPModule,
+    HealthMarkersModule,
   ],
   providers: [
 
