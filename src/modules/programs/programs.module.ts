@@ -18,6 +18,8 @@ import { TrainingMethodsModule } from './training-method/training-methods.module
 import { CloudinaryModule } from 'src/common/cloudinary/cloudinary.module';
 import { ProgramAnalyticsController } from './analytics/programAnalytics.controller';
 import { ProgramAnalyticsService } from './analytics/programAnalytics.service';
+import { ProgramLockController } from './programControl/programControl.controller';
+import { ProgramLockService } from './programControl/programControl.service';
 
 // Training Methods
 
@@ -40,6 +42,7 @@ import { ProgramAnalyticsService } from './analytics/programAnalytics.service';
     UserTrainingMethodsController,
     WorkoutController,
     ProgramAnalyticsController,
+    ProgramLockController,
   ],
   providers: [
     PrismaService,
@@ -48,6 +51,7 @@ import { ProgramAnalyticsService } from './analytics/programAnalytics.service';
     TrainingMethodsService,
     WorkoutService,
     ProgramAnalyticsService,
+    ProgramLockService,
   ],
   exports: [
     ProgramsService,
