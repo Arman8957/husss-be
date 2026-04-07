@@ -7,14 +7,30 @@
 //  3. accessories, trainingDays, restDays remain string[]
 
 import {
-  IsString, IsOptional, IsEnum, IsBoolean, IsInt, IsArray,
-  Min, Max, MinLength, MaxLength, ValidateNested, ArrayMinSize,
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsBoolean,
+  IsInt,
+  IsArray,
+  Min,
+  Max,
+  MinLength,
+  MaxLength,
+  ValidateNested,
+  ArrayMinSize,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import {
-  ProgramType, ProgramDifficulty, DaySplitType, WorkoutDayType,
-  TrainingMethodType, SetType, ExerciseTabType, AbsWorkoutType,
+  ProgramType,
+  ProgramDifficulty,
+  DaySplitType,
+  WorkoutDayType,
+  TrainingMethodType,
+  SetType,
+  ExerciseTabType,
+  AbsWorkoutType,
   MuscleGroup,
 } from '@prisma/client';
 
@@ -55,7 +71,10 @@ export class DayFocusItemDto {
 // ═══════════════════════════════════════════════════════════════
 
 export class CreateProgramDto {
-  @ApiProperty({ example: '2-Week Monster (basic)', description: 'Required. 3–120 chars.' })
+  @ApiProperty({
+    example: '2-Week Monster (basic)',
+    description: 'Required. 3–120 chars.',
+  })
   @IsString()
   @MinLength(3, { message: 'Program name must be at least 3 characters' })
   @MaxLength(120, { message: 'Program name must not exceed 120 characters' })
@@ -88,14 +107,16 @@ export class CreateProgramDto {
   @ApiPropertyOptional({
     enum: DaySplitType,
     default: DaySplitType.PUSH_PULL_LEGS,
-    description: 'PUSH_PULL_LEGS | UPPER_LOWER | FULL_BODY | BRO_SPLIT | CUSTOM',
+    description:
+      'PUSH_PULL_LEGS | UPPER_LOWER | FULL_BODY | BRO_SPLIT | CUSTOM',
   })
   @IsOptional()
   @IsEnum(DaySplitType)
   daySplitType?: DaySplitType;
 
   @ApiPropertyOptional({
-    example: 'A comprehensive 5-week Push/Pull/Legs program using rotating training methods.',
+    example:
+      'A comprehensive 5-week Push/Pull/Legs program using rotating training methods.',
     description: 'Max 2000 chars.',
   })
   @IsOptional()
@@ -103,18 +124,28 @@ export class CreateProgramDto {
   @MaxLength(2000)
   description?: string;
 
-  @ApiPropertyOptional({ default: false, description: 'true = premium-only access' })
+  @ApiPropertyOptional({
+    default: false,
+    description: 'true = premium-only access',
+  })
   @IsOptional()
   @IsBoolean()
   isPremium?: boolean;
 
-  @ApiPropertyOptional({ default: true, description: 'false = archived/hidden' })
+  @ApiPropertyOptional({
+    default: true,
+    description: 'false = archived/hidden',
+  })
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 
   @ApiPropertyOptional({
-    example: ['5-week Push/Pull/Legs', 'Optional BFR integration', 'Abs/Core system'],
+    example: [
+      '5-week Push/Pull/Legs',
+      'Optional BFR integration',
+      'Abs/Core system',
+    ],
     description: 'Feature bullet strings shown in program library card.',
   })
   @IsOptional()
@@ -128,7 +159,9 @@ export class CreateProgramDto {
   @IsString({ each: true })
   tags?: string[];
 
-  @ApiPropertyOptional({ example: 'https://cdn.example.com/thumbnails/monster-confusion.jpg' })
+  @ApiPropertyOptional({
+    example: 'https://cdn.example.com/thumbnails/monster-confusion.jpg',
+  })
   @IsOptional()
   @IsString()
   thumbnailUrl?: string;
@@ -158,7 +191,8 @@ export class DayConfigDto {
   @ApiProperty({
     enum: WorkoutDayType,
     example: WorkoutDayType.PUSH,
-    description: 'PUSH | PULL | LEGS | UPPER | LOWER | FULL_BODY | REST | CUSTOM',
+    description:
+      'PUSH | PULL | LEGS | UPPER | LOWER | FULL_BODY | REST | CUSTOM',
   })
   @IsEnum(WorkoutDayType, { message: 'dayType must be a valid WorkoutDayType' })
   dayType!: WorkoutDayType;
@@ -181,7 +215,9 @@ export class DayConfigDto {
     example: TrainingMethodType.FIVE_BY_FIVE,
     description: 'Training method. Must exist in training_methods table.',
   })
-  @IsEnum(TrainingMethodType, { message: 'trainingMethod must be a valid TrainingMethodType' })
+  @IsEnum(TrainingMethodType, {
+    message: 'trainingMethod must be a valid TrainingMethodType',
+  })
   trainingMethod!: TrainingMethodType;
 
   @ApiPropertyOptional({
@@ -215,8 +251,10 @@ export class DayConfigDto {
   description?: string;
 
   @ApiPropertyOptional({
-    example: 'Classic strength builder: 5×5 at 80-85% of 1RM. 2-3 min rest between sets.',
-    description: 'Execution instructions — maps to "Primary Prescription" from program sheets.',
+    example:
+      'Classic strength builder: 5×5 at 80-85% of 1RM. 2-3 min rest between sets.',
+    description:
+      'Execution instructions — maps to "Primary Prescription" from program sheets.',
   })
   @IsOptional()
   @IsString()
@@ -232,12 +270,18 @@ export class DayConfigDto {
   @MaxLength(500)
   exerciseHint?: string;
 
-  @ApiPropertyOptional({ default: false, description: 'Enable BFR finisher tab for this day.' })
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Enable BFR finisher tab for this day.',
+  })
   @IsOptional()
   @IsBoolean()
   hasBFR?: boolean;
 
-  @ApiPropertyOptional({ default: false, description: 'Enable abs workout tab for this day.' })
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Enable abs workout tab for this day.',
+  })
   @IsOptional()
   @IsBoolean()
   hasAbs?: boolean;
@@ -341,39 +385,56 @@ export class ExerciseSetDto {
 }
 
 export class AddExerciseToDayDto {
-  @ApiPropertyOptional({ description: 'Pick from exercise library. If omitted, provide exerciseName to create inline.' })
+  @ApiPropertyOptional({
+    description:
+      'Pick from exercise library. If omitted, provide exerciseName to create inline.',
+  })
   @IsOptional()
   @IsString()
   exerciseId?: string;
 
-  @ApiPropertyOptional({ example: 'Dumbbell Flat Bench Press', description: 'Create new exercise inline (if exerciseId not provided)' })
+  @ApiPropertyOptional({
+    example: 'Dumbbell Flat Bench Press',
+    description: 'Create new exercise inline (if exerciseId not provided)',
+  })
   @IsOptional()
   @IsString()
   exerciseName?: string;
 
-  @ApiPropertyOptional({ example: 'Chest press movement', description: 'Description for inline-created exercise' })
+  @ApiPropertyOptional({
+    example: 'Chest press movement',
+    description: 'Description for inline-created exercise',
+  })
   @IsOptional()
   @IsString()
   exerciseDescription?: string;
 
-  @ApiPropertyOptional({ example: 'Chest', description: 'Primary muscle for inline-created exercise' })
+  @ApiPropertyOptional({
+    example: 'Chest',
+    description: 'Primary muscle for inline-created exercise',
+  })
   @IsOptional()
   @IsString()
   exerciseFor?: string;
 
-  @ApiPropertyOptional({ example: 'https://cdn.example.com/exercises/bench-press.jpg' })
+  @ApiPropertyOptional({
+    example: 'https://cdn.example.com/exercises/bench-press.jpg',
+  })
   @IsOptional()
   @IsString()
   exerciseImageUrl?: string;
 
-  @ApiPropertyOptional({ example: 'https://cdn.example.com/exercises/bench-press.gif' })
+  @ApiPropertyOptional({
+    example: 'https://cdn.example.com/exercises/bench-press.gif',
+  })
   @IsOptional()
   @IsString()
   exerciseAnimationUrl?: string;
 
   @ApiProperty({
     enum: ExerciseTabType,
-    description: 'MAIN_EXERCISE | BFR_EXERCISE | ABS_EXERCISE — determines which tab this appears in',
+    description:
+      'MAIN_EXERCISE | BFR_EXERCISE | ABS_EXERCISE — determines which tab this appears in',
   })
   @IsEnum(ExerciseTabType)
   tabType!: ExerciseTabType;
@@ -398,12 +459,17 @@ export class AddExerciseToDayDto {
   @IsBoolean()
   isOptional?: boolean;
 
-  @ApiPropertyOptional({ example: 'Close Grip flat bench press', description: 'Note shown under accessory exercise' })
+  @ApiPropertyOptional({
+    example: 'Close Grip flat bench press',
+    description: 'Note shown under accessory exercise',
+  })
   @IsOptional()
   @IsString()
   accessoryNote?: string;
 
-  @ApiPropertyOptional({ description: 'Manual sort order override. Auto-appends if omitted.' })
+  @ApiPropertyOptional({
+    description: 'Manual sort order override. Auto-appends if omitted.',
+  })
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -411,7 +477,9 @@ export class AddExerciseToDayDto {
 }
 
 export class UpdateExerciseInDayDto {
-  @ApiPropertyOptional({ description: 'Swap to a different exercise from library' })
+  @ApiPropertyOptional({
+    description: 'Swap to a different exercise from library',
+  })
   @IsOptional()
   @IsString()
   exerciseId?: string;
@@ -453,7 +521,8 @@ export class UpdateExerciseInDayDto {
 export class ReorderExercisesDto {
   @ApiProperty({
     example: ['pde_id_1', 'pde_id_2', 'pde_id_3'],
-    description: 'All ProgramDayExercise IDs for this day in the desired order. Must include ALL IDs.',
+    description:
+      'All ProgramDayExercise IDs for this day in the desired order. Must include ALL IDs.',
   })
   @IsArray()
   @ArrayMinSize(1)
@@ -526,6 +595,18 @@ export class ProgramQueryDto {
   @Min(1)
   @Max(100)
   limit?: number = 20;
+
+  @ApiPropertyOptional({
+    description:
+      'true = active only | false = archived/inactive only | omit = all (default for admin)',
+    example: true,
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === 'true' ? true : value === 'false' ? false : undefined,
+  )
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class CopyProgramDto {

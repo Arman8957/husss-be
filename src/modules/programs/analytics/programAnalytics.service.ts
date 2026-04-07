@@ -1,291 +1,332 @@
-// src/modules/programs/program-analytics.service.ts
-//
-// Handles all program dashboard analytics:
-//   - Summary cards (total programs, active enrollments, premium count, avg completion)
-//   - Top programs by enrollments
-//   - Full performance breakdown table with revenue + trend
-
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { PaymentStatus, SubscriptionPlan } from '@prisma/client';
-
+import { PaymentStatus, Prisma } from '@prisma/client';
+ 
 @Injectable()
 export class ProgramAnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // SUMMARY CARDS
-  // Used by: "Program Management" header cards
-  // Returns: totalPrograms, activeEnrollments, premiumPrograms, avgCompletion
-  // ══════════════════════════════════════════════════════════════════════════
-
+ 
   async getSummary() {
-    const [
-      totalPrograms,
-      premiumPrograms,
-      analytics,
-      activeEnrollments,
-    ] = await Promise.all([
-      // Total published programs
-      this.prisma.program.count({
-        where: { isPublished: true, isActive: true },
-      }),
-
-      // Premium-only programs
-      this.prisma.program.count({
-        where: { isPublished: true, isActive: true, isPremium: true },
-      }),
-
-      // All analytics records for avg completion calculation
+    const [totalPrograms, premiumPrograms, analytics, activeEnrollments] = await Promise.all([
+      this.prisma.program.count({ where: { isPublished: true, isActive: true } }),
+      this.prisma.program.count({ where: { isPublished: true, isActive: true, isPremium: true } }),
       this.prisma.programAnalytics.findMany({
         select: { completionRate: true, activeEnrollments: true, totalEnrollments: true },
       }),
-
-      // Total active enrollments (users currently on a program)
       this.prisma.userActiveProgram.count(),
     ]);
-
-    const avgCompletion =
-      analytics.length > 0
-        ? Math.round(
-            analytics.reduce((sum, a) => sum + a.completionRate, 0) /
-              analytics.length,
-          )
-        : 0;
-
-    const totalEnrollments = analytics.reduce(
-      (sum, a) => sum + a.totalEnrollments,
-      0,
-    );
-
-    return {
-      totalPrograms,
-      activeEnrollments,
-      premiumPrograms,
-      avgCompletion,      // % across all programs
-      totalEnrollments,
-    };
+    const avgCompletion = analytics.length
+      ? Math.round(analytics.reduce((s, a) => s + a.completionRate, 0) / analytics.length) : 0;
+    const totalEnrollments = analytics.reduce((s, a) => s + a.totalEnrollments, 0);
+    return { totalPrograms, activeEnrollments, premiumPrograms, avgCompletion, totalEnrollments };
   }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // TOP PROGRAMS BY ENROLLMENT
-  // Used by: "Enrollment Programs" section (bar chart / list)
-  // Returns top N programs sorted by totalEnrollments
-  // ══════════════════════════════════════════════════════════════════════════
-
+ 
   async getTopByEnrollment(limit = 10) {
     const programs = await this.prisma.program.findMany({
-      where: { isPublished: true, isActive: true },
-      include: {
-        analytics: {
-          select: {
-            totalEnrollments: true,
-            activeEnrollments: true,
-            completionRate:   true,
-            completedCount:   true,
-          },
-        },
-      },
+      where:   { isPublished: true, isActive: true },
+      include: { analytics: { select: { totalEnrollments: true, activeEnrollments: true, completionRate: true, completedCount: true } } },
       orderBy: { analytics: { totalEnrollments: 'desc' } },
-      take: limit,
+      take:    limit,
     });
-
     return programs.map((p) => ({
-      id:               p.id,
-      name:             p.name,
-      durationWeeks:    p.durationWeeks,
-      isPremium:        p.isPremium,
-      thumbnailUrl:     p.thumbnailUrl,
-      totalEnrollments: p.analytics?.totalEnrollments ?? 0,
+      id: p.id, name: p.name, durationWeeks: p.durationWeeks, isPremium: p.isPremium,
+      thumbnailUrl: p.thumbnailUrl,
+      totalEnrollments:  p.analytics?.totalEnrollments  ?? 0,
       activeEnrollments: p.analytics?.activeEnrollments ?? 0,
-      completionRate:   Math.round(p.analytics?.completionRate ?? 0),
-      completedCount:   p.analytics?.completedCount ?? 0,
+      completionRate:    Math.round(p.analytics?.completionRate ?? 0),
+      completedCount:    p.analytics?.completedCount    ?? 0,
     }));
   }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // PERFORMANCE BREAKDOWN TABLE
-  // Used by: "Program Performance Breakdown" table
-  // Returns full metrics per program including revenue + trend
-  // ══════════════════════════════════════════════════════════════════════════
-
-  async getPerformanceBreakdown(page = 1, limit = 20) {
+ 
+  // ── PERFORMANCE BREAKDOWN — with search (regex on name / title) ──────────
+  //
+  // search param: plain string → converted to case-insensitive regex
+  // Matches partial names: "monster", "8w", "classic", "2-2", etc.
+ 
+  async getPerformanceBreakdown(page = 1, limit = 20, search?: string) {
     const skip = (page - 1) * limit;
-
-    const [programs, total] = await Promise.all([
+ 
+    // Build where clause — regex search on program name
+    const where: Prisma.ProgramWhereInput = { isPublished: true };
+    if (search?.trim()) {
+      where.name = {
+        contains: search.trim(),
+        mode:     'insensitive',   // case-insensitive — effectively /search/i
+      };
+    }
+ 
+    const [programs, total, revenueResult] = await Promise.all([
       this.prisma.program.findMany({
-        where: { isPublished: true },
+        where,
         include: {
-          analytics: true,
-          _count: { select: { reviews: true } },
+          analytics:  true,
+          _count:     { select: { reviews: true } },
         },
         orderBy: { analytics: { totalEnrollments: 'desc' } },
         skip,
         take: limit,
       }),
-      this.prisma.program.count({ where: { isPublished: true } }),
-    ]);
-
-    // Calculate revenue from premium subscriptions
-    // Revenue is estimated: premium users × avg subscription price
-    // (since programs don't have individual prices — they're all behind premium subscription)
-    const [monthlyRevenue, premiumUserCount] = await Promise.all([
+      this.prisma.program.count({ where }),
       this.prisma.paymentTransaction.aggregate({
-        where:   { status: PaymentStatus.SUCCEEDED },
-        _sum:    { amount: true },
+        where: { status: PaymentStatus.SUCCEEDED },
+        _sum:  { amount: true },
       }),
-      this.prisma.user.count({ where: { isPremium: true } }),
     ]);
-
-    const totalRevenue = monthlyRevenue._sum.amount ?? 0;
-
-    // Distribute revenue proportionally across premium programs by active users
-    const premiumPrograms     = programs.filter((p) => p.isPremium);
-    const totalPremiumActive  = premiumPrograms.reduce(
-      (sum, p) => sum + (p.analytics?.activeEnrollments ?? 0), 0,
+ 
+    const totalRevenue       = revenueResult._sum.amount ?? 0;
+    const premiumPrograms    = programs.filter((p) => p.isPremium);
+    const totalPremiumActive = premiumPrograms.reduce(
+      (s, p) => s + (p.analytics?.activeEnrollments ?? 0), 0,
     );
-
+ 
     const rows = programs.map((p) => {
-      const analytics       = p.analytics;
-      const enrollments     = analytics?.totalEnrollments  ?? 0;
-      const activeUsers     = analytics?.activeEnrollments ?? 0;
-      const completionRate  = Math.round(analytics?.completionRate ?? 0);
-      const completedCount  = analytics?.completedCount    ?? 0;
-
-      // Revenue: proportional share for premium programs
+      const a            = p.analytics;
+      const enrollments  = a?.totalEnrollments  ?? 0;
+      const activeUsers  = a?.activeEnrollments ?? 0;
+      const completionRate = Math.round(a?.completionRate ?? 0);
+ 
       let estimatedRevenue = 0;
       if (p.isPremium && totalPremiumActive > 0) {
-        estimatedRevenue = Math.round(
-          (activeUsers / totalPremiumActive) * totalRevenue,
-        );
+        estimatedRevenue = Math.round((activeUsers / totalPremiumActive) * totalRevenue);
       }
-
-      // Trend: compare active enrollments vs completed
-      // Simple heuristic: if completionRate > 50% → growing, else declining
+ 
       const trend: 'GROWING' | 'DECLINING' | 'STABLE' =
-        completionRate >= 50
-          ? 'GROWING'
-          : completionRate >= 25
-          ? 'STABLE'
-          : 'DECLINING';
-
+        completionRate >= 50 ? 'GROWING' : completionRate >= 25 ? 'STABLE' : 'DECLINING';
+ 
       return {
-        id:              p.id,
-        name:            p.name,
-        type:            `${p.durationWeeks} Weeks`,
-        durationWeeks:   p.durationWeeks,
-        difficulty:      p.difficulty,
-        isPremium:       p.isPremium,
-        isActive:        p.isActive,
-        isPublished:     p.isPublished,
-        thumbnailUrl:    p.thumbnailUrl,
-        enrollments,
-        activeUsers,
-        completionRate,
-        completedCount,
+        id: p.id, name: p.name,
+        type: `${p.durationWeeks} Weeks`, durationWeeks: p.durationWeeks,
+        difficulty: p.difficulty, isPremium: p.isPremium,
+        isActive: p.isActive, isPublished: p.isPublished, thumbnailUrl: p.thumbnailUrl,
+        enrollments, activeUsers, completionRate,
+        completedCount:   a?.completedCount ?? 0,
         estimatedRevenue,
         trend,
-        trendIcon:       trend === 'GROWING' ? '↑ Growing' : trend === 'DECLINING' ? '↓ Declining' : '→ Stable',
-        reviewCount:     p._count.reviews,
+        trendIcon:   trend === 'GROWING' ? '↑ Growing' : trend === 'DECLINING' ? '↓ Declining' : '→ Stable',
+        reviewCount: p._count.reviews,
       };
     });
-
+ 
     return {
       data: rows,
       meta: {
-        total,
-        page,
-        limit,
-        totalPages:      Math.ceil(total / limit),
-        totalRevenue:    Math.round(totalRevenue),
-        premiumUserCount,
+        total, page, limit, totalPages: Math.ceil(total / limit),
+        totalRevenue: Math.round(totalRevenue),
+        searchTerm:   search ?? null,
       },
     };
   }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // SINGLE PROGRAM ANALYTICS
-  // Detailed stats for one program
-  // ══════════════════════════════════════════════════════════════════════════
-
+ 
   async getProgramStats(programId: string) {
     const [program, weekProgress] = await Promise.all([
-      this.prisma.program.findUnique({
-        where:   { id: programId },
-        include: { analytics: true },
-      }),
-
-      // How far along are active users (week distribution)
+      this.prisma.program.findUnique({ where: { id: programId }, include: { analytics: true } }),
       this.prisma.userActiveProgram.groupBy({
-        by:    ['currentWeek'],
-        where: { programId },
-        _count: { currentWeek: true },
-        orderBy: { currentWeek: 'asc' },
+        by: ['currentWeek'], where: { programId },
+        _count: { currentWeek: true }, orderBy: { currentWeek: 'asc' },
       }),
     ]);
-
     if (!program) return null;
-
     const a = program.analytics;
-
-    // Completion funnel: enrolled → active → completed
-    const enrolled   = a?.totalEnrollments  ?? 0;
-    const active     = a?.activeEnrollments ?? 0;
-    const completed  = a?.completedCount    ?? 0;
-    const dropped    = enrolled - active - completed;
-
+    const enrolled  = a?.totalEnrollments  ?? 0;
+    const active    = a?.activeEnrollments ?? 0;
+    const completed = a?.completedCount    ?? 0;
     return {
-      id:             program.id,
-      name:           program.name,
-      durationWeeks:  program.durationWeeks,
-      isPremium:      program.isPremium,
+      id: program.id, name: program.name,
+      durationWeeks: program.durationWeeks, isPremium: program.isPremium,
       summary: {
-        totalEnrollments:  enrolled,
-        activeEnrollments: active,
-        completedCount:    completed,
-        droppedCount:      Math.max(0, dropped),
-        completionRate:    Math.round(a?.completionRate    ?? 0),
+        totalEnrollments: enrolled, activeEnrollments: active,
+        completedCount: completed, droppedCount: Math.max(0, enrolled - active - completed),
+        completionRate: Math.round(a?.completionRate ?? 0),
         avgWeeksCompleted: Math.round(a?.avgWeeksCompleted ?? 0),
       },
-      // Week-by-week distribution of current active users
-      weekDistribution: weekProgress.map((w) => ({
-        week:  w.currentWeek,
-        users: w._count.currentWeek,
-      })),
+      weekDistribution: weekProgress.map((w) => ({ week: w.currentWeek, users: w._count.currentWeek })),
     };
   }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // RECALCULATE ANALYTICS (admin utility — call after bulk operations)
-  // Updates ProgramAnalytics from live data
-  // ══════════════════════════════════════════════════════════════════════════
-
+ 
   async recalculate(programId: string) {
-    const [totalEnrollments, activeEnrollments, completedPrograms] =
-      await Promise.all([
-        this.prisma.userProgram.count({ where: { programId } }),
-        this.prisma.userActiveProgram.count({ where: { programId } }),
-        this.prisma.userProgram.count({ where: { programId, isCompleted: true } }),
-      ]);
-
-    const completionRate =
-      totalEnrollments > 0
-        ? Math.round((completedPrograms / totalEnrollments) * 100)
-        : 0;
-
-    // Average weeks completed by all enrolled users
+    const [totalEnrollments, activeEnrollments, completedPrograms] = await Promise.all([
+      this.prisma.userProgram.count({ where: { programId } }),
+      this.prisma.userActiveProgram.count({ where: { programId } }),
+      this.prisma.userProgram.count({ where: { programId, isCompleted: true } }),
+    ]);
+    const completionRate = totalEnrollments > 0
+      ? Math.round((completedPrograms / totalEnrollments) * 100) : 0;
     const avgResult = await this.prisma.userProgram.aggregate({
-      where: { programId },
-      _avg:  { completedWeeks: true },
+      where: { programId }, _avg: { completedWeeks: true },
     });
     const avgWeeksCompleted = Math.round(avgResult._avg.completedWeeks ?? 0);
-
     await this.prisma.programAnalytics.upsert({
       where:  { programId },
       create: { programId, totalEnrollments, activeEnrollments, completedCount: completedPrograms, completionRate, avgWeeksCompleted },
       update: { totalEnrollments, activeEnrollments, completedCount: completedPrograms, completionRate, avgWeeksCompleted },
     });
-
     return { programId, totalEnrollments, activeEnrollments, completedCount: completedPrograms, completionRate, avgWeeksCompleted };
   }
 }
+
+
+// import { Injectable } from '@nestjs/common';
+// import { PrismaService } from 'src/prisma/prisma.service';
+// import { PaymentStatus, Prisma } from '@prisma/client';
+ 
+// @Injectable()
+// export class ProgramAnalyticsService {
+//   constructor(private readonly prisma: PrismaService) {}
+ 
+//   async getSummary() {
+//     const [totalPrograms, premiumPrograms, analytics, activeEnrollments] = await Promise.all([
+//       this.prisma.program.count({ where: { isPublished: true, isActive: true } }),
+//       this.prisma.program.count({ where: { isPublished: true, isActive: true, isPremium: true } }),
+//       this.prisma.programAnalytics.findMany({
+//         select: { completionRate: true, activeEnrollments: true, totalEnrollments: true },
+//       }),
+//       this.prisma.userActiveProgram.count(),
+//     ]);
+//     const avgCompletion = analytics.length
+//       ? Math.round(analytics.reduce((s, a) => s + a.completionRate, 0) / analytics.length) : 0;
+//     const totalEnrollments = analytics.reduce((s, a) => s + a.totalEnrollments, 0);
+//     return { totalPrograms, activeEnrollments, premiumPrograms, avgCompletion, totalEnrollments };
+//   }
+ 
+//   async getTopByEnrollment(limit = 10) {
+//     const programs = await this.prisma.program.findMany({
+//       where:   { isPublished: true, isActive: true },
+//       include: { analytics: { select: { totalEnrollments: true, activeEnrollments: true, completionRate: true, completedCount: true } } },
+//       orderBy: { analytics: { totalEnrollments: 'desc' } },
+//       take:    limit,
+//     });
+//     return programs.map((p) => ({
+//       id: p.id, name: p.name, durationWeeks: p.durationWeeks, isPremium: p.isPremium,
+//       thumbnailUrl: p.thumbnailUrl,
+//       totalEnrollments:  p.analytics?.totalEnrollments  ?? 0,
+//       activeEnrollments: p.analytics?.activeEnrollments ?? 0,
+//       completionRate:    Math.round(p.analytics?.completionRate ?? 0),
+//       completedCount:    p.analytics?.completedCount    ?? 0,
+//     }));
+//   }
+ 
+//   // ── PERFORMANCE BREAKDOWN — with search (regex on name / title) ──────────
+//   //
+//   // search param: plain string → converted to case-insensitive regex
+//   // Matches partial names: "monster", "8w", "classic", "2-2", etc.
+ 
+//   async getPerformanceBreakdown(page = 1, limit = 20, search?: string) {
+//     const skip = (page - 1) * limit;
+ 
+//     // Build where clause — regex search on program name
+//     const where: Prisma.ProgramWhereInput = { isPublished: true };
+//     if (search?.trim()) {
+//       where.name = {
+//         contains: search.trim(),
+//         mode:     'insensitive',   // case-insensitive — effectively /search/i
+//       };
+//     }
+ 
+//     const [programs, total, revenueResult] = await Promise.all([
+//       this.prisma.program.findMany({
+//         where,
+//         include: {
+//           analytics:  true,
+//           _count:     { select: { reviews: true } },
+//         },
+//         orderBy: { analytics: { totalEnrollments: 'desc' } },
+//         skip,
+//         take: limit,
+//       }),
+//       this.prisma.program.count({ where }),
+//       this.prisma.paymentTransaction.aggregate({
+//         where: { status: PaymentStatus.SUCCEEDED },
+//         _sum:  { amount: true },
+//       }),
+//     ]);
+ 
+//     const totalRevenue       = revenueResult._sum.amount ?? 0;
+//     const premiumPrograms    = programs.filter((p) => p.isPremium);
+//     const totalPremiumActive = premiumPrograms.reduce(
+//       (s, p) => s + (p.analytics?.activeEnrollments ?? 0), 0,
+//     );
+ 
+//     const rows = programs.map((p) => {
+//       const a            = p.analytics;
+//       const enrollments  = a?.totalEnrollments  ?? 0;
+//       const activeUsers  = a?.activeEnrollments ?? 0;
+//       const completionRate = Math.round(a?.completionRate ?? 0);
+ 
+//       let estimatedRevenue = 0;
+//       if (p.isPremium && totalPremiumActive > 0) {
+//         estimatedRevenue = Math.round((activeUsers / totalPremiumActive) * totalRevenue);
+//       }
+ 
+//       const trend: 'GROWING' | 'DECLINING' | 'STABLE' =
+//         completionRate >= 50 ? 'GROWING' : completionRate >= 25 ? 'STABLE' : 'DECLINING';
+ 
+//       return {
+//         id: p.id, name: p.name,
+//         type: `${p.durationWeeks} Weeks`, durationWeeks: p.durationWeeks,
+//         difficulty: p.difficulty, isPremium: p.isPremium,
+//         isActive: p.isActive, isPublished: p.isPublished, thumbnailUrl: p.thumbnailUrl,
+//         enrollments, activeUsers, completionRate,
+//         completedCount:   a?.completedCount ?? 0,
+//         estimatedRevenue,
+//         trend,
+//         trendIcon:   trend === 'GROWING' ? '↑ Growing' : trend === 'DECLINING' ? '↓ Declining' : '→ Stable',
+//         reviewCount: p._count.reviews,
+//       };
+//     });
+ 
+//     return {
+//       data: rows,
+//       meta: {
+//         total, page, limit, totalPages: Math.ceil(total / limit),
+//         totalRevenue: Math.round(totalRevenue),
+//         searchTerm:   search ?? null,
+//       },
+//     };
+//   }
+ 
+//   async getProgramStats(programId: string) {
+//     const [program, weekProgress] = await Promise.all([
+//       this.prisma.program.findUnique({ where: { id: programId }, include: { analytics: true } }),
+//       this.prisma.userActiveProgram.groupBy({
+//         by: ['currentWeek'], where: { programId },
+//         _count: { currentWeek: true }, orderBy: { currentWeek: 'asc' },
+//       }),
+//     ]);
+//     if (!program) return null;
+//     const a = program.analytics;
+//     const enrolled  = a?.totalEnrollments  ?? 0;
+//     const active    = a?.activeEnrollments ?? 0;
+//     const completed = a?.completedCount    ?? 0;
+//     return {
+//       id: program.id, name: program.name,
+//       durationWeeks: program.durationWeeks, isPremium: program.isPremium,
+//       summary: {
+//         totalEnrollments: enrolled, activeEnrollments: active,
+//         completedCount: completed, droppedCount: Math.max(0, enrolled - active - completed),
+//         completionRate: Math.round(a?.completionRate ?? 0),
+//         avgWeeksCompleted: Math.round(a?.avgWeeksCompleted ?? 0),
+//       },
+//       weekDistribution: weekProgress.map((w) => ({ week: w.currentWeek, users: w._count.currentWeek })),
+//     };
+//   }
+ 
+//   async recalculate(programId: string) {
+//     const [totalEnrollments, activeEnrollments, completedPrograms] = await Promise.all([
+//       this.prisma.userProgram.count({ where: { programId } }),
+//       this.prisma.userActiveProgram.count({ where: { programId } }),
+//       this.prisma.userProgram.count({ where: { programId, isCompleted: true } }),
+//     ]);
+//     const completionRate = totalEnrollments > 0
+//       ? Math.round((completedPrograms / totalEnrollments) * 100) : 0;
+//     const avgResult = await this.prisma.userProgram.aggregate({
+//       where: { programId }, _avg: { completedWeeks: true },
+//     });
+//     const avgWeeksCompleted = Math.round(avgResult._avg.completedWeeks ?? 0);
+//     await this.prisma.programAnalytics.upsert({
+//       where:  { programId },
+//       create: { programId, totalEnrollments, activeEnrollments, completedCount: completedPrograms, completionRate, avgWeeksCompleted },
+//       update: { totalEnrollments, activeEnrollments, completedCount: completedPrograms, completionRate, avgWeeksCompleted },
+//     });
+//     return { programId, totalEnrollments, activeEnrollments, completedCount: completedPrograms, completionRate, avgWeeksCompleted };
+//   }
+// }

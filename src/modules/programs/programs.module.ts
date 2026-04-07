@@ -1,13 +1,11 @@
 // src/programs.module.ts
 
 import { Module } from '@nestjs/common';
-
-
 // Exercises
 import { ExercisesService } from './exercises/exercises.service';
 import { AdminExercisesController, UserExercisesController } from './exercises/exercises.controller';
 import { AdminProgramsController, UserProgramsController } from './programs.controller';
-import { AdminTrainingMethodsController, UserTrainingMethodsController } from './training-method/training-methods.controller';
+import { TrainingMethodsController } from './training-method/training-methods.controller';
 import { WorkoutController } from './workout/workout.controller';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ProgramsService } from './programs.service';
@@ -38,8 +36,7 @@ import { ProgramLockService } from './programControl/programControl.service';
     UserProgramsController,
     AdminExercisesController,
     UserExercisesController,
-    AdminTrainingMethodsController,
-    UserTrainingMethodsController,
+   TrainingMethodsController,
     WorkoutController,
     ProgramAnalyticsController,
     ProgramLockController,

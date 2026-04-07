@@ -1,17 +1,11 @@
-import { Module } from '@nestjs/common';
-import { TrainingMethodsService }  from './training-methods.service';
-import {
-  AdminTrainingMethodsController,
-  UserTrainingMethodsController,
-} from './training-methods.controller';
-import { PrismaModule } from 'src/prisma/prisma.module'; 
+import { Module }          from '@nestjs/common';
+import { PrismaModule }    from 'src/prisma/prisma.module';
+import { TrainingMethodsController } from './training-methods.controller';
+import { TrainingMethodsService } from './training-methods.service';
  
 @Module({
-  imports:     [PrismaModule],   
-  controllers: [
-    AdminTrainingMethodsController,      // /api/v1/admin/training-methods
-    UserTrainingMethodsController,       // /api/v1/training-methods
-  ],
+  imports:     [PrismaModule],
+  controllers: [TrainingMethodsController],
   providers:   [TrainingMethodsService],
   exports:     [TrainingMethodsService],
 })

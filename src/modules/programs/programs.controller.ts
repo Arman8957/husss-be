@@ -502,7 +502,7 @@ export class UserProgramsController {
     summary: 'Get Active Program (full structure + current position)',
   })
   getActive(@CurrentUser() user: any) {
-    return this.programsService.getUserActiveProgram(user.id);
+    return this.programsService.getUserActivePrograms(user.id);
   }
 
   @Delete('active')

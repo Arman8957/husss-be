@@ -23,8 +23,11 @@ import { SupplimentProductModule } from './modules/content-management/suppliment
 import { ProgrammeModule } from './modules/content-management/programme/programme.module';
 import { CoachModule } from './modules/coach/Coach.module';
 import { UserModule } from './modules/content-management/user/user.module';
-import { IAPModule } from './modules/subscription/payments/payment.module';
+// import { IAPModule } from './modules/subscription/payments/payment.module';
 import { HealthMarkersModule } from './modules/content-management/health-markers/health-markers.module';
+import { PaymentModule } from './modules/subscription/stripe/stripe.module';
+import { SubscriptionPlansModule } from './modules/subscription/subscriptionsPlan/subscriptionsPlan.module';
+import { TrainingMethodsModule } from './modules/programs/training-method/training-methods.module';
 
 @Module({
   imports: [
@@ -59,11 +62,13 @@ import { HealthMarkersModule } from './modules/content-management/health-markers
     ProgrammeModule,
     CoachModule,
     UserModule,
-    IAPModule,
+    // IAPModule,
+    PaymentModule,
     HealthMarkersModule,
+    SubscriptionPlansModule,
+    TrainingMethodsModule,
   ],
   providers: [
-
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
@@ -79,4 +84,4 @@ import { HealthMarkersModule } from './modules/content-management/health-markers
     },
   ],
 })
-export class AppModule { }
+export class AppModule {}
