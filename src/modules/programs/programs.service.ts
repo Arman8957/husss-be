@@ -46,10 +46,6 @@ import {
 export class ProgramsService {
   constructor(private readonly prisma: PrismaService) {}
 
-
-
-
- 
   // ═══════════════════════════════════════════════════════════════════════
   // USER — GET PROGRAM LIBRARY
   // GET /api/v1/programs/library
@@ -57,14 +53,14 @@ export class ProgramsService {
   // Returns ONLY published + active programs.
   // Adds isLocked + isActiveForUser flags per program.
   // ═══════════════════════════════════════════════════════════════════════
- 
+
   // async getLibrary(userId: string): Promise<IProgramLibraryItem[]> {
   //   const user = await this.prisma.user.findUnique({
   //     where:  { id: userId },
   //     select: { isPremium: true, activeProgram: { select: { programId: true } } },
   //   });
   //   if (!user) throw new NotFoundException('User not found');
- 
+
   //   const programs = await this.prisma.program.findMany({
   //     where:   { isPublished: true, isActive: true },
   //     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
@@ -89,7 +85,7 @@ export class ProgramsService {
   //       _count: { select: { reviews: true } },
   //     },
   //   });
- 
+
   //   return programs.map((p) => ({
   //     ...p,
   //     isLocked:        p.isPremium && !user.isPremium,
@@ -100,7 +96,6 @@ export class ProgramsService {
   //     reviewCount:     p._count.reviews,
   //   })) as IProgramLibraryItem[];
   // }
- 
 
   // ═══════════════════════════════════════════════════════════
   // STEP 1 — Basic Info
@@ -1002,22 +997,22 @@ export class ProgramsService {
   // LIST / GET — Admin
   // ═══════════════════════════════════════════════════════════
 
-   async findAll(query: ProgramQueryDto) {
+  async findAll(query: ProgramQueryDto) {
     const where: Prisma.ProgramWhereInput = {};
- 
-    if (query.type)                      where.type        = query.type;
-    if (query.difficulty)                where.difficulty  = query.difficulty;
-    if (query.isPremium  !== undefined)  where.isPremium   = query.isPremium;
+
+    if (query.type) where.type = query.type;
+    if (query.difficulty) where.difficulty = query.difficulty;
+    if (query.isPremium !== undefined) where.isPremium = query.isPremium;
     if (query.isPublished !== undefined) where.isPublished = query.isPublished;
-    if (query.isActive   !== undefined)  where.isActive    = query.isActive;
+    if (query.isActive !== undefined) where.isActive = query.isActive;
     if (query.search) {
       where.name = { contains: query.search, mode: 'insensitive' };
     }
- 
-    const page  = query.page  ?? 1;
+
+    const page = query.page ?? 1;
     const limit = query.limit ?? 20;
-    const skip  = (page - 1) * limit;
- 
+    const skip = (page - 1) * limit;
+
     const [data, total] = await Promise.all([
       this.prisma.program.findMany({
         where,
@@ -1027,26 +1022,26 @@ export class ProgramsService {
         include: {
           analytics: {
             select: {
-              totalEnrollments:  true,
+              totalEnrollments: true,
               activeEnrollments: true,
-              completionRate:    true,
-              completedCount:    true,
+              completionRate: true,
+              completedCount: true,
             },
           },
           weeks: {
             orderBy: { weekNumber: 'asc' },
             select: {
-              id:          true,
-              weekNumber:  true,
-              isPremium:   true,
+              id: true,
+              weekNumber: true,
+              isPremium: true,
               trainingDays: true,
-              restDays:     true,
-              _count:       { select: { days: true } },
+              restDays: true,
+              _count: { select: { days: true } },
             },
           },
           _count: {
             select: {
-              weeks:   true,
+              weeks: true,
               reviews: true,
             },
           },
@@ -1054,15 +1049,15 @@ export class ProgramsService {
       }),
       this.prisma.program.count({ where }),
     ]);
- 
+
     return {
       data: data.map((p) => ({
         ...p,
-        durationLabel:  `${p.durationWeeks} Weeks`,
-        statusLabel:    this.programStatusLabel(p),
-        weekCount:      p._count.weeks,
-        reviewCount:    p._count.reviews,
-        enrollments:    p.analytics?.totalEnrollments  ?? 0,
+        durationLabel: `${p.durationWeeks} Weeks`,
+        statusLabel: this.programStatusLabel(p),
+        weekCount: p._count.weeks,
+        reviewCount: p._count.reviews,
+        enrollments: p.analytics?.totalEnrollments ?? 0,
         activeEnrollments: p.analytics?.activeEnrollments ?? 0,
         completionRate: Math.round(p.analytics?.completionRate ?? 0),
       })),
@@ -1074,30 +1069,39 @@ export class ProgramsService {
         // Aggregate counts for dashboard cards
         counts: {
           total,
-          published:  await this.prisma.program.count({ where: { ...where, isPublished: true } }),
-          active:     await this.prisma.program.count({ where: { ...where, isActive: true } }),
-          premium:    await this.prisma.program.count({ where: { ...where, isPremium: true } }),
+          published: await this.prisma.program.count({
+            where: { ...where, isPublished: true },
+          }),
+          active: await this.prisma.program.count({
+            where: { ...where, isActive: true },
+          }),
+          premium: await this.prisma.program.count({
+            where: { ...where, isPremium: true },
+          }),
         },
       },
     };
   }
 
   // ─── Private Helpers ─────────────────────────────────────────────────────
-private programStatusLabel(p: { isPublished: boolean; isActive: boolean }): string {
-  if (!p.isActive) return 'ARCHIVED';
-  if (!p.isPublished) return 'DRAFT';
-  return 'PUBLISHED';
-}
+  private programStatusLabel(p: {
+    isPublished: boolean;
+    isActive: boolean;
+  }): string {
+    if (!p.isActive) return 'ARCHIVED';
+    if (!p.isPublished) return 'DRAFT';
+    return 'PUBLISHED';
+  }
 
-private getNextStep(program: any): string {
-  if (!program.isPublished && program._count?.weeks === 0) {
-    return 'Step 2: Configure day split → POST /admin/programs/:id/day-split';
+  private getNextStep(program: any): string {
+    if (!program.isPublished && program._count?.weeks === 0) {
+      return 'Step 2: Configure day split → POST /admin/programs/:id/day-split';
+    }
+    if (program.isPublished) {
+      return 'Program is published. Unpublish first to modify: PATCH /admin/programs/:id/publish { publish: false }';
+    }
+    return 'Step 3: Add exercises → POST /admin/programs/:id/days/:dayId/exercises, or publish → PATCH /admin/programs/:id/publish';
   }
-  if (program.isPublished) {
-    return 'Program is published. Unpublish first to modify: PATCH /admin/programs/:id/publish { publish: false }';
-  }
-  return 'Step 3: Add exercises → POST /admin/programs/:id/days/:dayId/exercises, or publish → PATCH /admin/programs/:id/publish';
-}
 
   async findOne(programId: string): Promise<IProgramWithWeeks> {
     return this.fetchFullProgram(programId);
@@ -1302,27 +1306,67 @@ private getNextStep(program: any): string {
   //     },
   //   });
   // }
-  async getUserActivePrograms(userId: string) {
-    // Add logging temporarily to debug
-    console.log(`Fetching active programs for user: ${userId}`);
+  // async getUserActivePrograms(userId: string) {
+  //   // Add logging temporarily to debug
+  //   console.log(`Fetching active programs for user: ${userId}`);
 
-    const activePrograms = await this.prisma.userActiveProgram.findMany({
-      where: {
-        userId,
-      },
-      orderBy: [
-        { startedAt: 'desc' }, // Most recent first
-        { id: 'desc' },
-      ],
+  //   const activePrograms = await this.prisma.userActiveProgram.findMany({
+  //     where: {
+  //       userId,
+  //     },
+  //     orderBy: [
+  //       { startedAt: 'desc' }, // Most recent first
+  //       { id: 'desc' },
+  //     ],
+  //     include: {
+  //       program: {
+  //         include: {
+  //           weeks: {
+  //             orderBy: { weekNumber: 'asc' },
+  //             include: {
+  //               trainingMethods: {
+  //                 include: { trainingMethod: true },
+  //               },
+  //               days: {
+  //                 orderBy: { dayNumber: 'asc' },
+  //                 include: {
+  //                   exercises: {
+  //                     orderBy: { sortOrder: 'asc' },
+  //                     include: {
+  //                       exercise: {
+  //                         include: {
+  //                           media: { orderBy: { sortOrder: 'asc' } },
+  //                         },
+  //                       },
+  //                       sets: { orderBy: { setNumber: 'asc' } },
+  //                     },
+  //                   },
+  //                 },
+  //               },
+  //             },
+  //           },
+  //         },
+  //       },
+  //     },
+  //   });
+
+  //   console.log(
+  //     `Found ${activePrograms.length} active programs for user ${userId}`,
+  //   );
+
+  //   return activePrograms;
+  // }
+
+  async getUserActivePrograms(userId: string) {
+    const active = await this.prisma.userActiveProgram.findUnique({
+      where: { userId },
       include: {
         program: {
           include: {
             weeks: {
               orderBy: { weekNumber: 'asc' },
               include: {
-                trainingMethods: {
-                  include: { trainingMethod: true },
-                },
+                trainingMethods: { include: { trainingMethod: true } },
                 days: {
                   orderBy: { dayNumber: 'asc' },
                   include: {
@@ -1330,9 +1374,7 @@ private getNextStep(program: any): string {
                       orderBy: { sortOrder: 'asc' },
                       include: {
                         exercise: {
-                          include: {
-                            media: { orderBy: { sortOrder: 'asc' } },
-                          },
+                          include: { media: { orderBy: { sortOrder: 'asc' } } },
                         },
                         sets: { orderBy: { setNumber: 'asc' } },
                       },
@@ -1346,11 +1388,133 @@ private getNextStep(program: any): string {
       },
     });
 
-    console.log(
-      `Found ${activePrograms.length} active programs for user ${userId}`,
-    );
+    if (!active) return null;
 
-    return activePrograms;
+    // Also get progress from UserProgram history
+    const history = await this.prisma.userProgram.findFirst({
+      where: { userId, programId: active.programId, isCompleted: false },
+      orderBy: { startedAt: 'desc' },
+      select: {
+        id: true,
+        completedWeeks: true,
+        totalWeeks: true,
+        startedAt: true,
+      },
+    });
+
+    return {
+      ...active,
+      completedWeeks: history?.completedWeeks ?? 0,
+      totalWeeks: history?.totalWeeks ?? active.program.durationWeeks,
+      progressPercent: history
+        ? Math.round((history.completedWeeks / (history.totalWeeks || 1)) * 100)
+        : 0,
+      historyId: history?.id ?? null,
+    };
+  }
+
+  async getUserProgramHistory(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        isPremium: true,
+        activeProgram: { select: { programId: true } },
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const history = await this.prisma.userProgram.findMany({
+      where: { userId },
+      orderBy: { startedAt: 'desc' },
+      include: {
+        program: {
+          select: {
+            id: true,
+            name: true,
+            durationWeeks: true,
+            daysPerWeek: true,
+            difficulty: true,
+            isPremium: true,
+            thumbnailUrl: true,
+            daySplitType: true,
+            hasBFR: true,
+            hasAbsWorkout: true,
+            features: true,
+          },
+        },
+      },
+    });
+
+    return history.map((h) => ({
+      id: h.id, // UserProgram ID
+      programId: h.programId,
+      programName: h.program.name,
+      thumbnailUrl: h.program.thumbnailUrl,
+      difficulty: h.program.difficulty,
+      durationWeeks: h.program.durationWeeks,
+      daysPerWeek: h.program.daysPerWeek,
+      isPremium: h.program.isPremium,
+      hasBFR: h.program.hasBFR,
+      hasAbsWorkout: h.program.hasAbsWorkout,
+      features: h.program.features,
+      startedAt: h.startedAt,
+      completedAt: h.completedAt,
+      isCompleted: h.isCompleted,
+      completedWeeks: h.completedWeeks,
+      totalWeeks: h.totalWeeks,
+      progressPercent: Math.round(
+        (h.completedWeeks / (h.totalWeeks || 1)) * 100,
+      ),
+      isCurrentlyActive: user.activeProgram?.programId === h.programId,
+      // Status label
+      statusLabel: h.isCompleted
+        ? 'COMPLETED'
+        : user.activeProgram?.programId === h.programId
+          ? 'ACTIVE'
+          : 'PAUSED',
+    }));
+  }
+
+  // Detailed view of one program entry — shows full program + progress
+  // ══════════════════════════════════════════════════════════════════════════
+
+  async getUserProgramHistoryDetail(userId: string, historyId: string) {
+    const history = await this.prisma.userProgram.findFirst({
+      where: { id: historyId, userId },
+    });
+    if (!history)
+      throw new NotFoundException('Program history record not found');
+
+    const [program, activeRecord] = await Promise.all([
+      this.fetchFullProgram(history.programId),
+      this.prisma.userActiveProgram.findUnique({
+        where: { userId },
+        select: { programId: true, currentWeek: true, currentDay: true },
+      }),
+    ]);
+
+    return {
+      historyId: history.id,
+      programId: history.programId,
+      startedAt: history.startedAt,
+      completedAt: history.completedAt,
+      isCompleted: history.isCompleted,
+      completedWeeks: history.completedWeeks,
+      totalWeeks: history.totalWeeks,
+      progressPercent: Math.round(
+        (history.completedWeeks / (history.totalWeeks || 1)) * 100,
+      ),
+      isCurrentlyActive: activeRecord?.programId === history.programId,
+      currentWeek:
+        activeRecord?.programId === history.programId
+          ? activeRecord.currentWeek
+          : null,
+      currentDay:
+        activeRecord?.programId === history.programId
+          ? activeRecord.currentDay
+          : null,
+      program,
+    };
   }
 
   async deactivateProgram(userId: string) {

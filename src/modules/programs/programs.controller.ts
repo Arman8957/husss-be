@@ -441,6 +441,8 @@ Include \`exerciseImageUrl\` and/or \`exerciseAnimationUrl\` as URL strings.
     return this.programsService.findAll(query);
   }
 
+
+
   @Get(':id')
   @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @ApiOperation({ summary: 'Get full program with weeks / days / exercises' })
@@ -474,6 +476,8 @@ Include \`exerciseImageUrl\` and/or \`exerciseAnimationUrl\` as URL strings.
   }
 }
 
+
+
 // ─── USER CONTROLLER ─────────────────────────────────────────────────────────
 @ApiTags('👤 User — Programs')
 @ApiBearerAuth('JWT-auth')
@@ -497,13 +501,13 @@ export class UserProgramsController {
     return this.programsService.activateProgram(user.id, dto);
   }
 
-  @Get('active')
-  @ApiOperation({
-    summary: 'Get Active Program (full structure + current position)',
-  })
-  getActive(@CurrentUser() user: any) {
-    return this.programsService.getUserActivePrograms(user.id);
-  }
+  // @Get('active')
+  // @ApiOperation({
+  //   summary: 'Get Active Program (full structure + current position)',
+  // })
+  // getActive(@CurrentUser() user: any) {
+  //   return this.programsService.getUserActivePrograms(user.id);
+  // }
 
   @Delete('active')
   @HttpCode(HttpStatus.OK)
@@ -517,6 +521,47 @@ export class UserProgramsController {
   @ApiParam({ name: 'id', description: 'Program ID' })
   findOne(@Param('id') id: string) {
     return this.programsService.findOne(id);
+  }
+
+  // Get('active')
+  // @ApiOperation({
+  //   summary: 'Get currently active program',
+  //   description:
+  //     'Returns the ONE program the user is doing right now.\n\n' +
+  //     '**Returns null if no program is active.**\n\n' +
+  //     'To see ALL past/completed programs → `GET /programs/history`',
+  // })
+
+
+  // getActive(@CurrentUser() user: any) {
+  //   return this.programsService.getUserActivePrograms(user.id);
+  // }
+ 
+  // GET /programs/history — ALL programs (completed + paused + active)
+  @Get('history')
+  @ApiOperation({
+    summary: 'Get all program history (completed + paused + active)',
+    description:
+      'Returns ALL programs the user has ever started, newest first.\n\n' +
+      '`statusLabel` values:\n' +
+      '- `ACTIVE` — currently running (same as GET /programs/active)\n' +
+      '- `COMPLETED` — user finished all weeks\n' +
+      '- `PAUSED` — started but switched to another program\n\n' +
+      'Use this to show "previous programs" and let users re-activate them.',
+  })
+  getHistory(@CurrentUser() user: any) {
+    return this.programsService.getUserProgramHistory(user.id);
+  }
+ 
+  // GET /programs/history/:historyId — single detail
+  @Get('history/:historyId')
+  @ApiOperation({ summary: 'Get single program history detail with full program structure' })
+  @ApiParam({ name: 'historyId', description: 'UserProgram ID from /programs/history' })
+  getHistoryDetail(
+    @CurrentUser() user: any,
+    @Param('historyId') historyId: string,
+  ) {
+    return this.programsService.getUserProgramHistoryDetail(user.id, historyId);
   }
 }
 
