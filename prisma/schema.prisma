@@ -585,7 +585,7 @@ model TrainingMethod {
   id          String             @id @default(cuid())
   name        String             @unique // "5x5", "Max-OT", etc.
   type        TrainingMethodType
-  label       String             @unique
+  label       String?             @unique
   description String
   setsInfo    String? // "5 sets of 5 heavy reps"
   repRange    String? // "4-6"
