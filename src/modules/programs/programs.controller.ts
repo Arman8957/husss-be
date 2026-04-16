@@ -501,13 +501,13 @@ export class UserProgramsController {
     return this.programsService.activateProgram(user.id, dto);
   }
 
-  // @Get('active')
-  // @ApiOperation({
-  //   summary: 'Get Active Program (full structure + current position)',
-  // })
-  // getActive(@CurrentUser() user: any) {
-  //   return this.programsService.getUserActivePrograms(user.id);
-  // }
+  @Get('active')
+  @ApiOperation({
+    summary: 'Get Active Program (full structure + current position)',
+  })
+  getActive(@CurrentUser() user: any) {
+    return this.programsService.getUserActivePrograms(user.id);
+  }
 
   @Delete('active')
   @HttpCode(HttpStatus.OK)
