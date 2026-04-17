@@ -153,3 +153,25 @@ export class CreateCheckoutSessionDto {
   @MaxLength(2000)
   cancelUrl?: string;
 }
+
+
+ 
+export class CreateIntentDto {
+  @ApiProperty({
+    enum:    ['MONTHLY', 'ANNUAL'],
+    example: 'MONTHLY',
+    description: 'MONTHLY ($29.99) or ANNUAL ($299.99)',
+  })
+  @IsEnum(['MONTHLY', 'ANNUAL'])
+  plan!: 'MONTHLY' | 'ANNUAL';
+ 
+  @ApiPropertyOptional({
+    enum:    ['user', 'coach'],
+    default: 'user',
+    example: 'user',
+  })
+  @IsOptional()
+  @IsEnum(['user', 'coach'])
+  planFor?: 'user' | 'coach';
+}
+ 

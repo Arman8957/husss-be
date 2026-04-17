@@ -32,6 +32,15 @@ export default () => ({
     password: process.env.SMTP_PASSWORD || '',
     from: process.env.SMTP_FROM || 'noreply@example.com',
   },
+
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY || '',
+    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+    monthlyPriceId: process.env.STRIPE_MONTHLY_PRICE_ID || '',
+    annualPriceId: process.env.STRIPE_ANNUAL_PRICE_ID || '',
+  },
+  
   verificationUrl: process.env.VERIFICATION_URL || 'http://localhost:3000/api/v1/verify',
   resetPasswordUrl: process.env.RESET_PASSWORD_URL || 'http://localhost:3000/api/v1/reset-password',
 });

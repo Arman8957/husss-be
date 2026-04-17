@@ -2,26 +2,102 @@
 import * as common from '@nestjs/common';
 import { Request } from 'express';
 import {
-  ApiTags, ApiBearerAuth, ApiOperation, ApiParam,
-  ApiBody, ApiResponse,
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiBody,
+  ApiResponse,
 } from '@nestjs/swagger';
 
-
 import type {
-  SubscriptionStatusResult, SetupIntentResult, MobileSubscribeResult,
-  ConfirmPaymentResult, PaymentMethodsResult, CheckoutResult,
-  PortalResult, CancelResult, WebhookResult
+  SubscriptionStatusResult,
+  SetupIntentResult,
+  MobileSubscribeResult,
+  ConfirmPaymentResult,
+  PaymentMethodsResult,
+  CheckoutResult,
+  PortalResult,
+  CancelResult,
+  WebhookResult,
+  CreateIntentResult,
 } from './type/stripe.type';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
-import { CurrentUser  } from 'src/common/decorators/current-user.decorator';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { PaymentService } from './stripe.service';
-import { CancelSubscriptionDto, ConfirmPaymentDto, CreateCheckoutSessionDto, MobileSubscribeDto } from './dto/stripe.dto';
-
+import {
+  CancelSubscriptionDto,
+  ConfirmPaymentDto,
+  CreateCheckoutSessionDto,
+  CreateIntentDto,
+  MobileSubscribeDto,
+} from './dto/stripe.dto';
 
 @ApiTags('💳 Payments & Subscriptions')
 @common.Controller('payments')
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
+
+  //==================create payment==================
+  @common.Post('create-intent')
+  @common.UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @common.HttpCode(common.HttpStatus.OK)
+  @ApiOperation({
+    summary: '📱 Create Payment Intent (Flutter Payment Sheet)',
+    description: `
+## Single-step mobile payment
+ 
+Send plan → get clientSecret → Flutter handles payment sheet.
+ 
+**Body:**
+\`\`\`json
+{ "plan": "MONTHLY" }
+{ "plan": "ANNUAL" }
+\`\`\`
+ 
+**Response:**
+\`\`\`json
+{
+  "clientSecret":   "pi_xxx_secret_xxx",
+  "customerId":     "cus_xxx",
+  "ephemeralKey":   "ek_test_xxx",
+  "publishableKey": "pk_test_xxx",
+  "amount":         2999,
+  "currency":       "usd",
+  "planName":       "Monthly Premium",
+  "priceUSD":       29.99
+}
+\`\`\`
+ 
+**Flutter usage:**
+\`\`\`dart
+// 1. Call this endpoint
+final res = await api.post('/payments/create-intent', {'plan': 'MONTHLY'});
+ 
+// 2. Init Payment Sheet
+await Stripe.instance.initPaymentSheet(SetupPaymentSheetParameters(
+  paymentIntentClientSecret: res['clientSecret'],
+  customerId:                res['customerId'],
+  customerEphemeralKeySecret: res['ephemeralKey'],
+  merchantDisplayName: 'HUSSS',
+));
+ 
+// 3. Show Payment Sheet
+await Stripe.instance.presentPaymentSheet();
+// ✅ Done — webhook activates subscription automatically
+\`\`\`
+ 
+**After payment:** Stripe fires \`invoice.payment_succeeded\` webhook → subscription activated in DB automatically.
+`,
+  })
+  @ApiBody({ type: CreateIntentDto })
+  createIntent(
+    @CurrentUser() user: any,
+    @common.Body() dto: CreateIntentDto,
+  ): Promise<CreateIntentResult> {
+    return this.paymentService.createIntent(user.id, dto);
+  }
 
   // ── Public (no auth) ─────────────────────────────────────────────────────
 
@@ -32,7 +108,9 @@ export class PaymentController {
   }
 
   @common.Get('plans/grouped')
-  @ApiOperation({ summary: 'Get plans split into userPlans / coachPlans (public)' })
+  @ApiOperation({
+    summary: 'Get plans split into userPlans / coachPlans (public)',
+  })
   getPlansGrouped(): Promise<{ userPlans: any[]; coachPlans: any[] }> {
     return this.paymentService.getPlansGrouped();
   }
@@ -53,7 +131,7 @@ export class PaymentController {
       '- invoice.payment_failed',
   })
   handleWebhook(
-    @common.Req()                       req: common.RawBodyRequest<Request>,
+    @common.Req() req: common.RawBodyRequest<Request>,
     @common.Headers('stripe-signature') signature: string,
   ): Promise<WebhookResult> {
     return this.paymentService.handleStripeWebhook(req.rawBody!, signature);
@@ -65,8 +143,9 @@ export class PaymentController {
   @common.UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
-    summary:     'Get current subscription status',
-    description: 'Returns plan, isPremium, status, currentPeriodEnd, stripeStatus (live from Stripe).',
+    summary: 'Get current subscription status',
+    description:
+      'Returns plan, isPremium, status, currentPeriodEnd, stripeStatus (live from Stripe).',
   })
   getSubscription(@CurrentUser() user: any): Promise<SubscriptionStatusResult> {
     return this.paymentService.getCurrentSubscription(user.id);
@@ -81,7 +160,7 @@ export class PaymentController {
   @ApiBearerAuth('JWT-auth')
   @common.HttpCode(common.HttpStatus.OK)
   @ApiOperation({
-    summary:     '📱 [Step 1] Get Setup Intent — init Payment Sheet',
+    summary: '📱 [Step 1] Get Setup Intent — init Payment Sheet',
     description: `
 ## Step 1 of 3 — Call BEFORE showing Stripe Payment Sheet
 
@@ -114,10 +193,14 @@ Now call Step 2 to create the subscription.
   })
   @ApiBody({
     description: 'No body required. Send empty {} or omit body entirely.',
-    required:    false,
-    schema:      { type: 'object', example: {} },
+    required: false,
+    schema: { type: 'object', example: {} },
   })
-  @ApiResponse({ status: 200, description: 'Returns setupIntentClientSecret, ephemeralKey, customerId, publishableKey' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Returns setupIntentClientSecret, ephemeralKey, customerId, publishableKey',
+  })
   createSetupIntent(@CurrentUser() user: any): Promise<SetupIntentResult> {
     return this.paymentService.createSetupIntent(user.id);
   }
@@ -127,7 +210,7 @@ Now call Step 2 to create the subscription.
   @ApiBearerAuth('JWT-auth')
   @common.HttpCode(common.HttpStatus.OK)
   @ApiOperation({
-    summary:     '📱 [Step 2] Subscribe — charge card & activate plan',
+    summary: '📱 [Step 2] Subscribe — charge card & activate plan',
     description: `
 ## Step 2 of 3 — After Payment Sheet saves card
 
@@ -153,7 +236,7 @@ Now call Step 2 to create the subscription.
   })
   createMobileSubscription(
     @CurrentUser() user: any,
-    @common.Body()        dto:  MobileSubscribeDto,
+    @common.Body() dto: MobileSubscribeDto,
   ): Promise<MobileSubscribeResult> {
     return this.paymentService.createMobileSubscription(user.id, dto);
   }
@@ -163,7 +246,7 @@ Now call Step 2 to create the subscription.
   @ApiBearerAuth('JWT-auth')
   @common.HttpCode(common.HttpStatus.OK)
   @ApiOperation({
-    summary:     '📱 [Step 3] Confirm — sync after 3D Secure (conditional)',
+    summary: '📱 [Step 3] Confirm — sync after 3D Secure (conditional)',
     description: `
 ## Step 3 of 3 — ONLY call if Step 2 returned \`status='requires_action'\`
 
@@ -182,9 +265,12 @@ POST /payments/iap/confirm { "subscriptionId": "sub_..." }
   })
   confirmPayment(
     @CurrentUser() user: any,
-    @common.Body()        dto:  ConfirmPaymentDto,
+    @common.Body() dto: ConfirmPaymentDto,
   ): Promise<ConfirmPaymentResult> {
-    return this.paymentService.confirmMobilePayment(user.id, dto.subscriptionId);
+    return this.paymentService.confirmMobilePayment(
+      user.id,
+      dto.subscriptionId,
+    );
   }
 
   @common.Get('iap/payment-methods')
@@ -227,10 +313,12 @@ POST /payments/iap/confirm { "subscriptionId": "sub_..." }
   @common.UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @common.HttpCode(common.HttpStatus.CREATED)
-  @ApiOperation({ summary: '🌐 [Web] Create Stripe Checkout Session (browser redirect)' })
+  @ApiOperation({
+    summary: '🌐 [Web] Create Stripe Checkout Session (browser redirect)',
+  })
   createCheckoutSession(
     @CurrentUser() user: any,
-    @common.Body()        dto:  CreateCheckoutSessionDto,
+    @common.Body() dto: CreateCheckoutSessionDto,
   ): Promise<CheckoutResult> {
     return this.paymentService.createCheckoutSession(user.id, dto);
   }
@@ -239,7 +327,9 @@ POST /payments/iap/confirm { "subscriptionId": "sub_..." }
   @common.UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @common.HttpCode(common.HttpStatus.CREATED)
-  @ApiOperation({ summary: '🌐 [Web] Open Stripe Billing Portal (manage card / cancel)' })
+  @ApiOperation({
+    summary: '🌐 [Web] Open Stripe Billing Portal (manage card / cancel)',
+  })
   createPortalSession(@CurrentUser() user: any): Promise<PortalResult> {
     return this.paymentService.createBillingPortalSession(user.id);
   }
@@ -248,10 +338,12 @@ POST /payments/iap/confirm { "subscriptionId": "sub_..." }
   @common.UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @common.HttpCode(common.HttpStatus.OK)
-  @ApiOperation({ summary: 'Cancel subscription (at period end or immediately)' })
+  @ApiOperation({
+    summary: 'Cancel subscription (at period end or immediately)',
+  })
   cancelSubscription(
     @CurrentUser() user: any,
-    @common.Body()        dto:  CancelSubscriptionDto,
+    @common.Body() dto: CancelSubscriptionDto,
   ): Promise<CancelResult> {
     return this.paymentService.cancelSubscription(user.id, dto);
   }
