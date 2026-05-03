@@ -73,6 +73,7 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
 import { memoryStorage } from 'multer';
 import express from 'express';
+import { PatchDaySplitDto } from './dto/programPatch.dto';
 
 // ─── ADMIN CONTROLLER ────────────────────────────────────────────────────────
 @ApiTags('🔐 Admin — Programs')
@@ -441,8 +442,6 @@ Include \`exerciseImageUrl\` and/or \`exerciseAnimationUrl\` as URL strings.
     return this.programsService.findAll(query);
   }
 
-
-
   @Get(':id')
   @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @ApiOperation({ summary: 'Get full program with weeks / days / exercises' })
@@ -475,8 +474,6 @@ Include \`exerciseImageUrl\` and/or \`exerciseAnimationUrl\` as URL strings.
     return this.programsService.remove(id, user.id);
   }
 }
-
-
 
 // ─── USER CONTROLLER ─────────────────────────────────────────────────────────
 @ApiTags('👤 User — Programs')
@@ -532,11 +529,10 @@ export class UserProgramsController {
   //     'To see ALL past/completed programs → `GET /programs/history`',
   // })
 
-
   // getActive(@CurrentUser() user: any) {
   //   return this.programsService.getUserActivePrograms(user.id);
   // }
- 
+
   // GET /programs/history — ALL programs (completed + paused + active)
   @Get('history')
   @ApiOperation({
@@ -552,17 +548,71 @@ export class UserProgramsController {
   getHistory(@CurrentUser() user: any) {
     return this.programsService.getUserProgramHistory(user.id);
   }
- 
+
   // GET /programs/history/:historyId — single detail
   @Get('history/:historyId')
-  @ApiOperation({ summary: 'Get single program history detail with full program structure' })
-  @ApiParam({ name: 'historyId', description: 'UserProgram ID from /programs/history' })
+  @ApiOperation({
+    summary: 'Get single program history detail with full program structure',
+  })
+  @ApiParam({
+    name: 'historyId',
+    description: 'UserProgram ID from /programs/history',
+  })
   getHistoryDetail(
     @CurrentUser() user: any,
     @Param('historyId') historyId: string,
   ) {
     return this.programsService.getUserProgramHistoryDetail(user.id, historyId);
   }
+
+  @Get(':id/day-split')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
+  @ApiOperation({
+    summary: 'Get Day Split Configuration',
+    description:
+      'Returns the week/day split structure for a program — training methods, ' +
+      'muscle groups, exercise counts per day. Does NOT include exercise details ' +
+      '(use GET /admin/programs/:id/days/:dayId/exercises for that).',
+  })
+  @ApiParam({ name: 'id', description: 'Program ID' })
+  getDaySplit(@Param('id') id: string) {
+    return this.programsService.getDaySplit(id);
+  }
+
+  @Patch(':id/day-split')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
+  @ApiOperation({
+    summary: '② Patch Day Split — partial update',
+    description: `
+Partially updates an existing day split. Only send what you want to change.
+
+**What you can patch per week:**
+- \`trainingDays\` / \`restDays\` / \`accessories\` — schedule strings
+- \`isPremium\` — lock/unlock the week
+- \`days[]\` — individual day fields (matched by \`dayNumber\`)
+
+**What you can patch per day (inside \`days[]\`):**
+- \`name\` — display label
+- \`dayType\` — e.g. PUSH → PULL
+- \`trainingMethod\` — e.g. MODERATE_VOLUME → MAX_OT
+- \`muscleGroups\` — override the muscle group array
+- \`hasBFR\` / \`hasAbs\` — update program-level flags
+- \`description\` / \`howToExecute\` / \`exerciseHint\` — notes fields
+
+**Rules:**
+- Program must be unpublished
+- Weeks and days must already exist (use POST /day-split to add new ones)
+- Only fields present in the request body are updated
+
+**Returns:** Same shape as GET /day-split
+  `,
+  })
+  @ApiParam({ name: 'id', description: 'Program ID' })
+  patchDaySplit(
+    @Param('id') id: string,
+    @Body() dto: PatchDaySplitDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.programsService.patchDaySplit(id, dto, user.id);
+  }
 }
-
-

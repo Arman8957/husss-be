@@ -17,7 +17,7 @@ import { CurrentUser }    from 'src/common/decorators/current-user.decorator';
 import { SubscriptionPlansService } from './subscriptionsPlan.service';
 import { CreateSubscriptionPlanDto, UpdateFeaturesDto, UpdateSubscriptionPlanDto } from './dto/subscriptions.dto';
 
-@ApiTags('💎 Admin — Subscription Plans')
+@ApiTags(' Admin — Subscription Plans')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN', 'SUPER_ADMIN')

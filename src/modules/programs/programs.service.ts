@@ -41,6 +41,7 @@ import {
   IProgramReviewShape,
   IProgramWithWeeks,
 } from './interface/program.interface';
+import { PatchDaySplitDto } from './dto/programPatch.dto';
 
 @Injectable()
 export class ProgramsService {
@@ -1841,4 +1842,415 @@ export class ProgramsService {
       .create({ data: { adminUserId, action, targetType, targetId, details } })
       .catch(() => {});
   }
+
+
+  //======================================================
+
+  // ═══════════════════════════════════════════════════════════
+// GET DAY SPLIT — returns week/day config without exercises
+// GET /admin/programs/:id/day-split
+// ═══════════════════════════════════════════════════════════
+async getDaySplit(programId: string) {
+  const program = await this.prisma.program.findUnique({
+    where: { id: programId },
+    select: {
+      id: true,
+      name: true,
+      durationWeeks: true,
+      daysPerWeek: true,
+      daySplitType: true,
+      hasBFR: true,
+      hasAbsWorkout: true,
+      isPublished: true,
+      weeks: {
+        orderBy: { weekNumber: 'asc' },
+        select: {
+          id: true,
+          weekNumber: true,
+          isPremium: true,
+          trainingDays: true,
+          restDays: true,
+          accessories: true,
+          trainingMethods: {
+            select: {
+              dayType: true,
+              trainingMethod: {
+                select: {
+                  id: true,
+                  name: true,
+                  type: true,
+                  label: true,
+                  repRange: true,
+                  restPeriod: true,
+                  setsInfo: true,
+                },
+              },
+            },
+          },
+          days: {
+            orderBy: { dayNumber: 'asc' },
+            select: {
+              id: true,
+              dayNumber: true,
+              dayType: true,
+              name: true,
+              isRestDay: true,
+              muscleGroups: true,
+              notes: true,
+              _count: {
+                select: {
+                  exercises: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!program) {
+    throw new NotFoundException(`Program "${programId}" not found`);
+  }
+
+  return {
+    programId: program.id,
+    programName: program.name,
+    durationWeeks: program.durationWeeks,
+    daysPerWeek: program.daysPerWeek,
+    daySplitType: program.daySplitType,
+    hasBFR: program.hasBFR,
+    hasAbsWorkout: program.hasAbsWorkout,
+    isPublished: program.isPublished,
+    weeksConfigured: program.weeks.length,
+    isComplete: program.weeks.length === program.durationWeeks,
+    weeks: program.weeks.map((week) => ({
+      id: week.id,
+      weekNumber: week.weekNumber,
+      isPremium: week.isPremium,
+      trainingDays: week.trainingDays,
+      restDays: week.restDays,
+      accessories: week.accessories,
+      // Keyed by dayType so the frontend can look up method per day instantly
+      trainingMethods: week.trainingMethods.reduce(
+        (acc, tm) => {
+          acc[tm.dayType] = tm.trainingMethod;
+          return acc;
+        },
+        {} as Record<string, any>,
+      ),
+      days: week.days.map((day) => ({
+        id: day.id,
+        dayNumber: day.dayNumber,
+        dayType: day.dayType,
+        name: day.name,
+        isRestDay: day.isRestDay,
+        muscleGroups: day.muscleGroups,
+        // Parsed from combined notes field
+        description: day.notes?.split('\n')[0] ?? null,
+        howToExecute:
+          day.notes
+            ?.split('\n')
+            .find((l) => l.startsWith('How to Execute:'))
+            ?.replace('How to Execute: ', '') ?? null,
+        exerciseHint:
+          day.notes
+            ?.split('\n')
+            .find((l) => l.startsWith('Exercise Hint:'))
+            ?.replace('Exercise Hint: ', '') ?? null,
+        exerciseCount: day._count.exercises,
+      })),
+    })),
+  };
+}
+
+  // ═══════════════════════════════════════════════════════════
+// PATCH DAY SPLIT — partial update (week metadata + days)
+// PATCH /admin/programs/:id/day-split
+// ═══════════════════════════════════════════════════════════
+async patchDaySplit(
+  programId: string,
+  dto: PatchDaySplitDto,
+  adminUserId: string,
+) {
+  // ── Pre-flight ────────────────────────────────────────────────────────────
+  const program = await this.findProgramOrThrow(programId);
+
+  if (program.isPublished) {
+    throw new BadRequestException(
+      'Cannot modify a published program. Unpublish it first.',
+    );
+  }
+
+  // Validate week numbers are in range
+  const outOfRange = dto.weeks
+    .map((w) => w.weekNumber)
+    .filter((n) => n < 1 || n > program.durationWeeks);
+
+  if (outOfRange.length) {
+    throw new BadRequestException(
+      `Week numbers [${outOfRange.join(', ')}] exceed program duration (${program.durationWeeks} weeks)`,
+    );
+  }
+
+  // ── READ: Existing weeks + days in one query ──────────────────────────────
+  const existingWeeks = await this.prisma.programWeek.findMany({
+    where: { programId },
+    select: {
+      id: true,
+      weekNumber: true,
+      days: {
+        select: { id: true, dayNumber: true, dayType: true, notes: true },
+        orderBy: { dayNumber: 'asc' },
+      },
+      trainingMethods: {
+        select: { id: true, dayType: true, trainingMethodId: true },
+      },
+    },
+  });
+
+  const weekMap = new Map(existingWeeks.map((w) => [w.weekNumber, w]));
+
+  // Validate all requested weeks actually exist (can't patch a week
+  // that hasn't been created yet — use POST /day-split for that)
+  const missingWeeks = dto.weeks
+    .map((w) => w.weekNumber)
+    .filter((n) => !weekMap.has(n));
+
+  if (missingWeeks.length) {
+    throw new BadRequestException(
+      `Weeks [${missingWeeks.join(', ')}] have not been configured yet. ` +
+        `Use POST /day-split to create them first.`,
+    );
+  }
+
+  // ── Resolve training methods if any days are changing method ─────────────
+  const requestedMethodTypes = [
+    ...new Set(
+      dto.weeks.flatMap(
+        (w) =>
+          w.days
+            ?.filter((d) => d.trainingMethod)
+            .map((d) => d.trainingMethod!) ?? [],
+      ),
+    ),
+  ];
+
+  const methodMap = new Map<string, { id: string; type: string }>();
+
+  if (requestedMethodTypes.length) {
+    const foundMethods = await this.prisma.trainingMethod.findMany({
+      where: { type: { in: requestedMethodTypes as any }, isActive: true },
+      select: { id: true, type: true },
+    });
+    for (const m of foundMethods) methodMap.set(m.type, m);
+
+    const missing = requestedMethodTypes.filter((t) => !methodMap.has(t));
+    if (missing.length) {
+      throw new BadRequestException(
+        `Training method(s) not found or inactive: ${missing.join(', ')}`,
+      );
+    }
+  }
+
+  // ── WRITE: Transaction ────────────────────────────────────────────────────
+  await this.prisma.$transaction(
+    async (tx) => {
+      for (const weekDto of dto.weeks) {
+        const existing = weekMap.get(weekDto.weekNumber)!;
+
+        // ── 1. Update week-level fields (only what was sent) ───────────────
+        const weekUpdate: Prisma.ProgramWeekUpdateInput = {};
+        if (weekDto.trainingDays !== undefined)
+          weekUpdate.trainingDays = weekDto.trainingDays;
+        if (weekDto.restDays !== undefined)
+          weekUpdate.restDays = weekDto.restDays;
+        if (weekDto.accessories !== undefined)
+          weekUpdate.accessories = weekDto.accessories;
+        if (weekDto.isPremium !== undefined)
+          weekUpdate.isPremium = weekDto.isPremium;
+
+        if (Object.keys(weekUpdate).length) {
+          await tx.programWeek.update({
+            where: { id: existing.id },
+            data: weekUpdate,
+          });
+        }
+
+        // ── 2. Patch individual days ───────────────────────────────────────
+        if (!weekDto.days?.length) continue;
+
+        const dayMap = new Map(existing.days.map((d) => [d.dayNumber, d]));
+
+        for (const dayDto of weekDto.days) {
+          const existingDay = dayMap.get(dayDto.dayNumber);
+
+          if (!existingDay) {
+            throw new BadRequestException(
+              `Day ${dayDto.dayNumber} does not exist in week ${weekDto.weekNumber}. ` +
+                `Use POST /day-split to add new days.`,
+            );
+          }
+
+          // ── Build day update ─────────────────────────────────────────────
+          const dayUpdate: Prisma.ProgramDayUpdateInput = {};
+
+          if (dayDto.dayType !== undefined) dayUpdate.dayType = dayDto.dayType;
+          if (dayDto.name !== undefined) dayUpdate.name = dayDto.name;
+          if (dayDto.muscleGroups !== undefined)
+            dayUpdate.muscleGroups = dayDto.muscleGroups;
+
+          // Rebuild notes only if at least one notes field was sent
+          const notesChanged =
+            dayDto.description !== undefined ||
+            dayDto.howToExecute !== undefined ||
+            dayDto.exerciseHint !== undefined;
+
+          if (notesChanged) {
+            // Parse existing notes so unchanged parts are preserved
+            const existingLines = existingDay.notes?.split('\n') ?? [];
+            const existingDescription =
+              existingLines.find(
+                (l) =>
+                  !l.startsWith('How to Execute:') &&
+                  !l.startsWith('Exercise Hint:'),
+              ) ?? null;
+            const existingHowTo =
+              existingLines
+                .find((l) => l.startsWith('How to Execute:'))
+                ?.replace('How to Execute: ', '') ?? null;
+            const existingHint =
+              existingLines
+                .find((l) => l.startsWith('Exercise Hint:'))
+                ?.replace('Exercise Hint: ', '') ?? null;
+
+            const description =
+              dayDto.description !== undefined
+                ? dayDto.description
+                : existingDescription;
+            const howToExecute =
+              dayDto.howToExecute !== undefined
+                ? dayDto.howToExecute
+                : existingHowTo;
+            const exerciseHint =
+              dayDto.exerciseHint !== undefined
+                ? dayDto.exerciseHint
+                : existingHint;
+
+            const noteParts = [
+              description ?? null,
+              howToExecute ? `How to Execute: ${howToExecute}` : null,
+              exerciseHint ? `Exercise Hint: ${exerciseHint}` : null,
+            ].filter(Boolean);
+
+            dayUpdate.notes = noteParts.length ? noteParts.join('\n') : null;
+          }
+
+          // hasBFR / hasAbs update program-level flags — handled below
+          if (Object.keys(dayUpdate).length) {
+            await tx.programDay.update({
+              where: { id: existingDay.id },
+              data: dayUpdate,
+            });
+          }
+
+          // ── Update training method link (if dayType or method changed) ───
+          if (dayDto.trainingMethod) {
+            const tm = methodMap.get(dayDto.trainingMethod)!;
+            // The target dayType: either the new one (if changed) or existing
+            const targetDayType = dayDto.dayType ?? existingDay.dayType;
+
+            const existingLink = existing.trainingMethods.find(
+              (m) => m.dayType === existingDay.dayType,
+            );
+
+            if (existingLink) {
+              await tx.programWeekTrainingMethod.update({
+                where: { id: existingLink.id },
+                data: {
+                  trainingMethodId: tm.id,
+                  dayType: targetDayType,
+                },
+              });
+            } else {
+              // Link didn't exist — create it
+              await tx.programWeekTrainingMethod.create({
+                data: {
+                  programWeekId: existing.id,
+                  trainingMethodId: tm.id,
+                  dayType: targetDayType,
+                },
+              });
+            }
+          }
+        }
+
+        // ── 3. Recompute program-level BFR / Abs flags from ALL days ──────
+        // Only do this if hasBFR or hasAbs was touched in this request
+        const anyBFROrAbsChanged = weekDto.days?.some(
+          (d) => d.hasBFR !== undefined || d.hasAbs !== undefined,
+        );
+
+        if (anyBFROrAbsChanged) {
+          // Apply in-memory changes then re-query to get accurate flags
+          const updatedDays = existing.days.map((d) => {
+            const patch = weekDto.days?.find(
+              (pd) => pd.dayNumber === d.dayNumber,
+            );
+            return {
+              hasBFR: patch?.hasBFR,
+              hasAbs: patch?.hasAbs,
+            };
+          });
+
+          // Fall back to DB count if flags aren't set in this patch
+          const [bfrCount, absCount] = await Promise.all([
+            tx.programDay.count({
+              where: {
+                programWeek: { programId },
+                exercises: { some: { isBFR: true } },
+              },
+            }),
+            tx.programDay.count({
+              where: {
+                programWeek: { programId },
+                exercises: { some: { isAbs: true } },
+              },
+            }),
+          ]);
+
+          const hasBFR =
+            updatedDays.some((d) => d.hasBFR === true) || bfrCount > 0;
+          const hasAbsWorkout =
+            updatedDays.some((d) => d.hasAbs === true) || absCount > 0;
+
+          await tx.program.update({
+            where: { id: programId },
+            data: { hasBFR, hasAbsWorkout },
+          });
+        }
+      }
+    },
+    { timeout: 15_000 },
+  );
+
+  await this.logAction(
+    adminUserId,
+    'PATCH_DAY_SPLIT',
+    'Program',
+    programId,
+    {
+      weeksPatched: dto.weeks.length,
+      daysPatched: dto.weeks.reduce(
+        (sum, w) => sum + (w.days?.length ?? 0),
+        0,
+      ),
+    },
+  );
+
+  // Return the updated split view (same shape as GET /day-split)
+  return this.getDaySplit(programId);
+}
+
+
 }

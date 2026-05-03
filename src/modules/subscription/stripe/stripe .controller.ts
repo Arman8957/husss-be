@@ -39,64 +39,75 @@ export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
 
   //==================create payment==================
+  //   @common.Post('create-intent')
+  //   @common.UseGuards(JwtAuthGuard)
+  //   @ApiBearerAuth('JWT-auth')
+  //   @common.HttpCode(common.HttpStatus.OK)
+  //   @ApiOperation({
+  //     summary: '📱 Create Payment Intent (Flutter Payment Sheet)',
+  //     description: `
+  // ## Single-step mobile payment
+
+  // Send plan → get clientSecret → Flutter handles payment sheet.
+
+  // **Body:**
+  // \`\`\`json
+  // { "plan": "MONTHLY" }
+  // { "plan": "ANNUAL" }
+  // \`\`\`
+
+  // **Response:**
+  // \`\`\`json
+  // {
+  //   "clientSecret":   "pi_xxx_secret_xxx",
+  //   "customerId":     "cus_xxx",
+  //   "ephemeralKey":   "ek_test_xxx",
+  //   "publishableKey": "pk_test_xxx",
+  //   "amount":         2999,
+  //   "currency":       "usd",
+  //   "planName":       "Monthly Premium",
+  //   "priceUSD":       29.99
+  // }
+  // \`\`\`
+
+  // **Flutter usage:**
+  // \`\`\`dart
+  // // 1. Call this endpoint
+  // final res = await api.post('/payments/create-intent', {'plan': 'MONTHLY'});
+
+  // // 2. Init Payment Sheet
+  // await Stripe.instance.initPaymentSheet(SetupPaymentSheetParameters(
+  //   paymentIntentClientSecret: res['clientSecret'],
+  //   customerId:                res['customerId'],
+  //   customerEphemeralKeySecret: res['ephemeralKey'],
+  //   merchantDisplayName: 'HUSSS',
+  // ));
+
+  // // 3. Show Payment Sheet
+  // await Stripe.instance.presentPaymentSheet();
+  // // ✅ Done — webhook activates subscription automatically
+  // \`\`\`
+
+  // **After payment:** Stripe fires \`invoice.payment_succeeded\` webhook → subscription activated in DB automatically.
+  // `,
+  //   })
+  //   @ApiBody({ type: CreateIntentDto })
+  //   createIntent(
+  //     @CurrentUser() user: any,
+  //     @common.Body() dto: CreateIntentDto,
+  //   ){
+  //     return this.paymentService.createIntent(user.id, dto);
+  //     console.log(user.id, dto)
+  //   }
   @common.Post('create-intent')
   @common.UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
-  @common.HttpCode(common.HttpStatus.OK)
-  @ApiOperation({
-    summary: '📱 Create Payment Intent (Flutter Payment Sheet)',
-    description: `
-## Single-step mobile payment
- 
-Send plan → get clientSecret → Flutter handles payment sheet.
- 
-**Body:**
-\`\`\`json
-{ "plan": "MONTHLY" }
-{ "plan": "ANNUAL" }
-\`\`\`
- 
-**Response:**
-\`\`\`json
-{
-  "clientSecret":   "pi_xxx_secret_xxx",
-  "customerId":     "cus_xxx",
-  "ephemeralKey":   "ek_test_xxx",
-  "publishableKey": "pk_test_xxx",
-  "amount":         2999,
-  "currency":       "usd",
-  "planName":       "Monthly Premium",
-  "priceUSD":       29.99
-}
-\`\`\`
- 
-**Flutter usage:**
-\`\`\`dart
-// 1. Call this endpoint
-final res = await api.post('/payments/create-intent', {'plan': 'MONTHLY'});
- 
-// 2. Init Payment Sheet
-await Stripe.instance.initPaymentSheet(SetupPaymentSheetParameters(
-  paymentIntentClientSecret: res['clientSecret'],
-  customerId:                res['customerId'],
-  customerEphemeralKeySecret: res['ephemeralKey'],
-  merchantDisplayName: 'HUSSS',
-));
- 
-// 3. Show Payment Sheet
-await Stripe.instance.presentPaymentSheet();
-// ✅ Done — webhook activates subscription automatically
-\`\`\`
- 
-**After payment:** Stripe fires \`invoice.payment_succeeded\` webhook → subscription activated in DB automatically.
-`,
-  })
-  @ApiBody({ type: CreateIntentDto })
-  createIntent(
+  @ApiOperation({ summary: 'Create Stripe Subscription Intent for Flutter' })
+  async createIntent(
     @CurrentUser() user: any,
     @common.Body() dto: CreateIntentDto,
-  ): Promise<CreateIntentResult> {
-    return this.paymentService.createIntent(user.id, dto);
+  ) {
+    return await this.paymentService.createIntent(user.id, dto);
   }
 
   // ── Public (no auth) ─────────────────────────────────────────────────────

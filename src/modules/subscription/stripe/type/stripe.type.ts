@@ -32,6 +32,7 @@ export interface MobileSubscribeResult {
   message:          string;
 }
 
+
 export interface ConfirmPaymentResult {
   success:  boolean;
   status:   string;
