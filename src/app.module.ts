@@ -28,6 +28,7 @@ import { HealthMarkersModule } from './modules/content-management/health-markers
 import { PaymentModule } from './modules/subscription/stripe/stripe.module';
 import { SubscriptionPlansModule } from './modules/subscription/subscriptionsPlan/subscriptionsPlan.module';
 import { TrainingMethodsModule } from './modules/programs/training-method/training-methods.module';
+import { CompaireProgramModule } from './modules/compaire-program/compaire-program.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { TrainingMethodsModule } from './modules/programs/training-method/traini
     HealthMarkersModule,
     SubscriptionPlansModule,
     TrainingMethodsModule,
+    CompaireProgramModule,
   ],
   providers: [
     {
