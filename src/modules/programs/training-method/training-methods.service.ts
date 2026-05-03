@@ -143,4 +143,66 @@ export class TrainingMethodsService {
   getMethodTypes() {
     return METHOD_TYPES;
   }
+
+
+
+  async findAllPublic(activeOnly: boolean = true) {
+    const where = activeOnly ? { isActive: true } : {};
+
+    const methods = await this.prisma.trainingMethod.findMany({
+      where,
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        label: true,
+        description: true,
+        setsInfo: true,
+        repRange: true,
+        restPeriod: true,
+        intensity: true,
+        notes: true,
+        isActive: true,
+        sortOrder: true,
+      },
+    });
+
+    return methods.map((m) => ({
+      ...m,
+      label: m.label || METHOD_LABEL_MAP[m.type as keyof typeof METHOD_LABEL_MAP] || m.name,
+    }));
+  }
+
+  /** Public API - Get single training method */
+  async findOnePublic(id: string) {
+    const method = await this.prisma.trainingMethod.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        label: true,
+        description: true,
+        setsInfo: true,
+        repRange: true,
+        restPeriod: true,
+        intensity: true,
+        notes: true,
+        isActive: true,
+        sortOrder: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!method) {
+      throw new NotFoundException(`Training method with ID "${id}" not found`);
+    }
+
+    return {
+      ...method,
+      label: method.label || METHOD_LABEL_MAP[method.type as keyof typeof METHOD_LABEL_MAP] || method.name,
+    };
+  }
 }

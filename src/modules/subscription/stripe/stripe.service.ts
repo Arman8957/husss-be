@@ -79,162 +79,417 @@ export class PaymentService {
   }
 
   // ====================== FINAL FIXED createIntent (Recurring Subscription) ======================
-  async createIntent(userId: string, dto: CreateIntentDto): Promise<CreateIntentResult> {
-    // 1. Get user
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, email: true, name: true },
-    });
-    if (!user) throw new NotFoundException('User not found');
+  // async createIntent(userId: string, dto: CreateIntentDto): Promise<CreateIntentResult> {
+  //   // 1. Get user
+  //   const user = await this.prisma.user.findUnique({
+  //     where: { id: userId },
+  //     select: { id: true, email: true, name: true },
+  //   });
+  //   if (!user) throw new NotFoundException('User not found');
 
-    // 2. Block active paid subscription
-    const existing = await this.prisma.subscription.findUnique({
-      where: { userId },
-      select: { plan: true, status: true, stripeSubscriptionId: true },
+  //   // 2. Block active paid subscription
+  //   const existing = await this.prisma.subscription.findUnique({
+  //     where: { userId },
+  //     select: { plan: true, status: true, stripeSubscriptionId: true },
+  //   });
+  //   if (
+  //     existing?.plan !== SubscriptionPlan.FREE &&
+  //     existing?.status === SubscriptionStatus.ACTIVE &&
+  //     existing?.stripeSubscriptionId
+  //   ) {
+  //     throw new BadRequestException(
+  //       'You already have an active subscription. Cancel it before subscribing to a new plan.',
+  //     );
+  //   }
+
+  //   // 3. Get Stripe Price ID
+  //   const stripePriceId = await this.getStripePriceId(dto);
+
+  //   // 4. Get or create customer
+  //   const customerId = await this.getOrCreateStripeCustomer(user);
+
+  //   // 5. Ephemeral key
+  //   const ephemeralKey = await this.stripe.ephemeralKeys.create(
+  //     { customer: customerId },
+  //     { apiVersion: '2026-02-25.clover' },
+  //   );
+
+  //   // 6. Create subscription
+  //   let subscription: Stripe.Subscription;
+  //   try {
+  //     this.logger.log(`[IAP] Creating recurring subscription with price: ${stripePriceId}`);
+
+  //     subscription = await this.stripe.subscriptions.create({
+  //       customer: customerId,
+  //       items: [{ price: stripePriceId }],
+  //       payment_behavior: 'default_incomplete',
+  //       payment_settings: {
+  //         save_default_payment_method: 'on_subscription',
+  //         payment_method_types: ['card'],
+  //       },
+  //       expand: ['latest_invoice.payment_intent', 'pending_setup_intent'],
+  //       metadata: { userId, plan: dto.plan, planFor: dto.planFor ?? 'user' },
+  //     }) as unknown as Stripe.Subscription;
+  //   } catch (err: unknown) {
+  //     const msg = err instanceof Error ? err.message : String(err);
+  //     this.logger.error(`[IAP] Subscription creation failed: ${msg}`);
+  //     throw new BadRequestException(`Failed to create subscription: ${msg}`);
+  //   }
+
+  //   // 7. Extract clientSecret (safe + fallback)
+  //   let clientSecret: string | null = null;
+
+  //   // Try from expanded latest_invoice
+  //   const latestInvoiceRaw = subscription.latest_invoice;
+  //   if (latestInvoiceRaw && typeof latestInvoiceRaw !== 'string') {
+  //     const pi = (latestInvoiceRaw as any)?.payment_intent as Stripe.PaymentIntent | null;
+  //     if (pi?.client_secret) {
+  //       clientSecret = pi.client_secret;
+  //       this.logger.log(`[IAP] ✓ PaymentIntent found in expanded invoice`);
+  //     }
+  //   }
+
+  //   // Try pending SetupIntent (for $0 or trial cases)
+  //   const pendingSetup = (subscription as any).pending_setup_intent as Stripe.SetupIntent | null;
+  //   if (!clientSecret && pendingSetup?.client_secret) {
+  //     clientSecret = pendingSetup.client_secret;
+  //     this.logger.log(`[IAP] ✓ Using pending SetupIntent`);
+  //   }
+
+  //   // Immediate active case
+  //   if (!clientSecret && (subscription.status === 'active' || subscription.status === 'trialing')) {
+  //     this.logger.log(`[IAP] ✓ Subscription activated immediately (no payment needed now)`);
+  //   }
+
+  //   // Final fallback: Retrieve the invoice again
+  //   if (!clientSecret) {
+  //     const invoiceId = typeof latestInvoiceRaw === 'string' 
+  //       ? latestInvoiceRaw 
+  //       : (latestInvoiceRaw as any)?.id;
+
+  //     if (invoiceId) {
+  //       this.logger.log(`[IAP] No clientSecret found — retrieving invoice ${invoiceId} again...`);
+  //       try {
+  //         const fullInvoice = await this.stripe.invoices.retrieve(invoiceId, {
+  //           expand: ['payment_intent'],
+  //         });
+  //         const pi = (fullInvoice as any)?.payment_intent as Stripe.PaymentIntent | null;
+  //         if (pi?.client_secret) {
+  //           clientSecret = pi.client_secret;
+  //           this.logger.log(`[IAP] ✓ PaymentIntent retrieved via fallback`);
+  //         }
+  //       } catch (e) {
+  //         this.logger.warn(`[IAP] Fallback invoice retrieve failed: ${e}`);
+  //       }
+  //     }
+  //   }
+
+  //   // If still no clientSecret and we expect payment → fail cleanly
+  //   if (!clientSecret && subscription.status === 'incomplete') {
+  //     this.logger.error(`[IAP] Final failure: No clientSecret. Status=${subscription.status}, AmountDue=${(latestInvoiceRaw as any)?.amount_due || 'unknown'}`);
+  //     await this.stripe.subscriptions.cancel(subscription.id).catch(() => {});
+  //     throw new InternalServerErrorException('Could not setup payment. Please try again or check Stripe Dashboard.');
+  //   }
+
+  //   // 8. Save to DB
+  //   const planFor = dto.planFor ?? 'user';
+  //   await this.prisma.subscription.upsert({
+  //     where: { userId },
+  //     create: {
+  //       userId,
+  //       plan: dto.plan as SubscriptionPlan,
+  //       status: SubscriptionStatus.ACTIVE,
+  //       stripeCustomerId: customerId,
+  //       stripeSubscriptionId: subscription.id,
+  //       stripePriceId,
+  //       cancelAtPeriodEnd: false,
+  //       isCoachPremium: planFor === 'coach',
+  //       maxClients: planFor === 'coach' ? 999 : 0,
+  //     },
+  //     update: {
+  //       stripeSubscriptionId: subscription.id,
+  //       stripePriceId,
+  //     },
+  //   });
+
+  //   // Get plan details
+  //   const planConfig = await this.prisma.subscriptionPlanConfig.findFirst({
+  //     where: { plan: dto.plan as SubscriptionPlan, isActive: true },
+  //     select: { id: true, name: true, priceUSD: true },
+  //   });
+
+  //   this.logger.log(`[IAP]  create-intent SUCCESS → user=${userId} plan=${dto.plan} price=${stripePriceId} status=${subscription.status}`);
+
+  //   return {
+  //     clientSecret: clientSecret ?? '',
+  //     customerId,
+  //     ephemeralKey: ephemeralKey.secret!,
+  //     publishableKey: this.config.get<string>('STRIPE_PUBLISHABLE_KEY') ?? '',
+  //     amount: (latestInvoiceRaw as any)?.amount_due ?? 0,
+  //     currency: 'usd',
+  //     planName: planConfig?.name ?? `${dto.plan} Premium`,
+  //     planId: planConfig?.id ?? '',
+  //     priceUSD: planConfig?.priceUSD ?? 0,
+  //     subscriptionId: subscription.id,
+  //     requiresPayment: !!clientSecret,
+  //     status: subscription.status,
+  //   };
+  // }
+
+  async createIntent(userId: string, dto: CreateIntentDto): Promise<CreateIntentResult> {
+  // ── 1. Get user ──────────────────────────────────────────────────────────
+  const user = await this.prisma.user.findUnique({
+    where:  { id: userId },
+    select: { id: true, email: true, name: true },
+  });
+  if (!user) throw new NotFoundException('User not found');
+
+  // ── 2. Block already-active paid subscription ────────────────────────────
+  const existing = await this.prisma.subscription.findUnique({
+    where:  { userId },
+    select: { plan: true, status: true, stripeSubscriptionId: true },
+  });
+  if (
+    existing?.plan !== SubscriptionPlan.FREE &&
+    existing?.status === SubscriptionStatus.ACTIVE &&
+    existing?.stripeSubscriptionId
+  ) {
+    throw new BadRequestException(
+      'You already have an active subscription. Cancel it before subscribing to a new plan.',
+    );
+  }
+
+  // ── 3. Resolve Stripe Price ID ───────────────────────────────────────────
+  const stripePriceId = await this.getStripePriceId(dto);
+
+  // ── 4. Get or create Stripe customer ────────────────────────────────────
+  const customerId = await this.getOrCreateStripeCustomer(user);
+
+  // ── 5. Ephemeral key (Flutter needs this for Payment Sheet) ──────────────
+  const ephemeralKey = await this.stripe.ephemeralKeys.create(
+    { customer: customerId },
+    { apiVersion: '2026-02-25.clover' },
+  );
+
+  // ── 6. Cancel any previous incomplete subscriptions for this customer ────
+  //   Prevents Stripe from blocking new subscription creation with
+  //   "customer has incomplete subscription" error
+  try {
+    const previousSubs = await this.stripe.subscriptions.list({
+      customer: customerId,
+      status:   'incomplete',
+      limit:    5,
     });
-    if (
-      existing?.plan !== SubscriptionPlan.FREE &&
-      existing?.status === SubscriptionStatus.ACTIVE &&
-      existing?.stripeSubscriptionId
-    ) {
-      throw new BadRequestException(
-        'You already have an active subscription. Cancel it before subscribing to a new plan.',
+    for (const s of previousSubs.data) {
+      await this.stripe.subscriptions.cancel(s.id);
+      this.logger.log(`[IAP] Cancelled stale incomplete subscription ${s.id}`);
+    }
+  } catch (err) {
+    this.logger.warn(`[IAP] Could not clean up incomplete subs: ${err}`);
+  }
+
+  // ── 7. Create subscription ───────────────────────────────────────────────
+  //
+  //  KEY CHANGE: use payment_behavior: 'default_incomplete' is kept BUT
+  //  we also set payment_method_collection: 'always' and most importantly
+  //  we retrieve the PaymentIntent separately via the invoice, which gives
+  //  us the client_secret regardless of payment method attachment state.
+  //
+  //  Flutter Payment Sheet needs client_secret in requires_payment_method
+  //  state — that IS correct. The sheet collects + confirms in one step.
+  //
+  let subscription: Stripe.Subscription;
+  try {
+    subscription = await this.stripe.subscriptions.create({
+      customer:         customerId,
+      items:            [{ price: stripePriceId }],
+      payment_behavior: 'default_incomplete',
+      payment_settings: {
+        save_default_payment_method: 'on_subscription',
+        payment_method_types:        ['card'],
+      },
+      // ✅ Do NOT expand here — we retrieve separately below for reliability
+      metadata: { userId, plan: dto.plan, planFor: dto.planFor ?? 'user' },
+    }) as unknown as Stripe.Subscription;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    this.logger.error(`[IAP] Subscription creation failed: ${msg}`);
+    throw new BadRequestException(`Failed to create subscription: ${msg}`);
+  }
+
+  this.logger.log(
+    `[IAP] Subscription created: ${subscription.id} status=${subscription.status}`,
+  );
+
+  // ── 8. Extract clientSecret ──────────────────────────────────────────────
+  //
+  //  CRITICAL FIX: Do NOT rely on expand — retrieve the invoice explicitly.
+  //  expand: ['latest_invoice.payment_intent'] is unreliable when the PI
+  //  is in requires_payment_method state (Stripe omits client_secret).
+  //  Direct invoice retrieval always returns the full PaymentIntent object.
+  //
+  let clientSecret: string | null = null;
+  let amountDue = 0;
+
+  const latestInvoiceRef = subscription.latest_invoice;
+  const invoiceId = typeof latestInvoiceRef === 'string'
+    ? latestInvoiceRef
+    : (latestInvoiceRef as any)?.id ?? null;
+
+if (invoiceId) {
+  try {
+    // Step 1: Get the invoice (payment_intent comes back as a string ID)
+    const invoice = await this.stripe.invoices.retrieve(invoiceId);
+    amountDue = invoice.amount_due;
+
+    const paymentIntentId = typeof (invoice as any).payment_intent === 'string'
+      ? (invoice as any).payment_intent
+      : (invoice as any).payment_intent?.id ?? null;
+
+    this.logger.log(`[IAP] Invoice ${invoiceId} → PaymentIntent ID: ${paymentIntentId}`);
+
+    if (paymentIntentId) {
+      // Step 2: Retrieve the PaymentIntent DIRECTLY — this ALWAYS has client_secret
+      const pi = await this.stripe.paymentIntents.retrieve(paymentIntentId);
+      
+      if (pi.client_secret) {
+        clientSecret = pi.client_secret;
+        this.logger.log(`[IAP] ✅ client_secret obtained. PI=${pi.id} status=${pi.status}`);
+      } else {
+        this.logger.warn(`[IAP] PI found but client_secret null. PI=${pi.id} status=${pi.status}`);
+      }
+    } else {
+      this.logger.warn(`[IAP] No payment_intent ID on invoice ${invoiceId}`);
+    }
+  } catch (err) {
+    this.logger.error(`[IAP] Invoice/PI retrieve failed: ${err}`);
+  }
+}
+
+  // Handle immediate activation (free trial, $0 amount)
+  if (!clientSecret) {
+    if (subscription.status === 'active' || subscription.status === 'trialing') {
+      this.logger.log(
+        `[IAP] Subscription activated immediately (no payment required). ` +
+        `Status=${subscription.status}`,
+      );
+      // Activate in DB straight away
+      await this.activateSubscriptionInDb(
+        userId,
+        subscription,
+        dto,
+        customerId,
+        stripePriceId,
+      );
+    } else {
+      // Still incomplete with no clientSecret — clean up and throw
+      this.logger.error(
+        `[IAP] Cannot get clientSecret. ` +
+        `Sub=${subscription.id} status=${subscription.status} amountDue=${amountDue}`,
+      );
+      await this.stripe.subscriptions.cancel(subscription.id).catch(() => {});
+      throw new InternalServerErrorException(
+        'Could not initialise payment. ' +
+        'Please check that your Stripe product price is set to "recurring" ' +
+        'and the price ID is correct in your database.',
       );
     }
+  }
 
-    // 3. Get Stripe Price ID
-    const stripePriceId = await this.getStripePriceId(dto);
-
-    // 4. Get or create customer
-    const customerId = await this.getOrCreateStripeCustomer(user);
-
-    // 5. Ephemeral key
-    const ephemeralKey = await this.stripe.ephemeralKeys.create(
-      { customer: customerId },
-      { apiVersion: '2026-02-25.clover' },
-    );
-
-    // 6. Create subscription
-    let subscription: Stripe.Subscription;
-    try {
-      this.logger.log(`[IAP] Creating recurring subscription with price: ${stripePriceId}`);
-
-      subscription = await this.stripe.subscriptions.create({
-        customer: customerId,
-        items: [{ price: stripePriceId }],
-        payment_behavior: 'default_incomplete',
-        payment_settings: {
-          save_default_payment_method: 'on_subscription',
-          payment_method_types: ['card'],
-        },
-        expand: ['latest_invoice.payment_intent', 'pending_setup_intent'],
-        metadata: { userId, plan: dto.plan, planFor: dto.planFor ?? 'user' },
-      }) as unknown as Stripe.Subscription;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`[IAP] Subscription creation failed: ${msg}`);
-      throw new BadRequestException(`Failed to create subscription: ${msg}`);
-    }
-
-    // 7. Extract clientSecret (safe + fallback)
-    let clientSecret: string | null = null;
-
-    // Try from expanded latest_invoice
-    const latestInvoiceRaw = subscription.latest_invoice;
-    if (latestInvoiceRaw && typeof latestInvoiceRaw !== 'string') {
-      const pi = (latestInvoiceRaw as any)?.payment_intent as Stripe.PaymentIntent | null;
-      if (pi?.client_secret) {
-        clientSecret = pi.client_secret;
-        this.logger.log(`[IAP] ✓ PaymentIntent found in expanded invoice`);
-      }
-    }
-
-    // Try pending SetupIntent (for $0 or trial cases)
-    const pendingSetup = (subscription as any).pending_setup_intent as Stripe.SetupIntent | null;
-    if (!clientSecret && pendingSetup?.client_secret) {
-      clientSecret = pendingSetup.client_secret;
-      this.logger.log(`[IAP] ✓ Using pending SetupIntent`);
-    }
-
-    // Immediate active case
-    if (!clientSecret && (subscription.status === 'active' || subscription.status === 'trialing')) {
-      this.logger.log(`[IAP] ✓ Subscription activated immediately (no payment needed now)`);
-    }
-
-    // Final fallback: Retrieve the invoice again
-    if (!clientSecret) {
-      const invoiceId = typeof latestInvoiceRaw === 'string' 
-        ? latestInvoiceRaw 
-        : (latestInvoiceRaw as any)?.id;
-
-      if (invoiceId) {
-        this.logger.log(`[IAP] No clientSecret found — retrieving invoice ${invoiceId} again...`);
-        try {
-          const fullInvoice = await this.stripe.invoices.retrieve(invoiceId, {
-            expand: ['payment_intent'],
-          });
-          const pi = (fullInvoice as any)?.payment_intent as Stripe.PaymentIntent | null;
-          if (pi?.client_secret) {
-            clientSecret = pi.client_secret;
-            this.logger.log(`[IAP] ✓ PaymentIntent retrieved via fallback`);
-          }
-        } catch (e) {
-          this.logger.warn(`[IAP] Fallback invoice retrieve failed: ${e}`);
-        }
-      }
-    }
-
-    // If still no clientSecret and we expect payment → fail cleanly
-    if (!clientSecret && subscription.status === 'incomplete') {
-      this.logger.error(`[IAP] Final failure: No clientSecret. Status=${subscription.status}, AmountDue=${(latestInvoiceRaw as any)?.amount_due || 'unknown'}`);
-      await this.stripe.subscriptions.cancel(subscription.id).catch(() => {});
-      throw new InternalServerErrorException('Could not setup payment. Please try again or check Stripe Dashboard.');
-    }
-
-    // 8. Save to DB
+  // ── 9. Save subscription to DB (pending — webhook will confirm) ──────────
+  if (clientSecret) {
     const planFor = dto.planFor ?? 'user';
     await this.prisma.subscription.upsert({
-      where: { userId },
+      where:  { userId },
       create: {
         userId,
-        plan: dto.plan as SubscriptionPlan,
-        status: SubscriptionStatus.ACTIVE,
-        stripeCustomerId: customerId,
+        plan:                 dto.plan as SubscriptionPlan,
+        status:               SubscriptionStatus.TRIALING, // pending until webhook
+        stripeCustomerId:     customerId,
         stripeSubscriptionId: subscription.id,
         stripePriceId,
-        cancelAtPeriodEnd: false,
-        isCoachPremium: planFor === 'coach',
-        maxClients: planFor === 'coach' ? 999 : 0,
+        cancelAtPeriodEnd:    false,
+        isCoachPremium:       planFor === 'coach',
+        maxClients:           planFor === 'coach' ? 999 : 0,
       },
       update: {
         stripeSubscriptionId: subscription.id,
         stripePriceId,
+        status:               SubscriptionStatus.TRIALING,
       },
     });
-
-    // Get plan details
-    const planConfig = await this.prisma.subscriptionPlanConfig.findFirst({
-      where: { plan: dto.plan as SubscriptionPlan, isActive: true },
-      select: { id: true, name: true, priceUSD: true },
-    });
-
-    this.logger.log(`[IAP]  create-intent SUCCESS → user=${userId} plan=${dto.plan} price=${stripePriceId} status=${subscription.status}`);
-
-    return {
-      clientSecret: clientSecret ?? '',
-      customerId,
-      ephemeralKey: ephemeralKey.secret!,
-      publishableKey: this.config.get<string>('STRIPE_PUBLISHABLE_KEY') ?? '',
-      amount: (latestInvoiceRaw as any)?.amount_due ?? 0,
-      currency: 'usd',
-      planName: planConfig?.name ?? `${dto.plan} Premium`,
-      planId: planConfig?.id ?? '',
-      priceUSD: planConfig?.priceUSD ?? 0,
-      subscriptionId: subscription.id,
-      requiresPayment: !!clientSecret,
-      status: subscription.status,
-    };
   }
+
+  // ── 10. Build response ───────────────────────────────────────────────────
+  const planConfig = await this.prisma.subscriptionPlanConfig.findFirst({
+    where:  { plan: dto.plan as SubscriptionPlan, isActive: true },
+    select: { id: true, name: true, priceUSD: true },
+  });
+
+  this.logger.log(
+    `[IAP] create-intent SUCCESS → user=${userId} plan=${dto.plan} ` +
+    `price=${stripePriceId} sub=${subscription.id}`,
+  );
+
+  return {
+    clientSecret:     clientSecret ?? '',
+    customerId,
+    ephemeralKey:     ephemeralKey.secret!,
+    publishableKey:   this.config.get<string>('STRIPE_PUBLISHABLE_KEY') ?? '',
+    amount:           amountDue,
+    currency:         'usd',
+    planName:         planConfig?.name ?? `${dto.plan} Premium`,
+    planId:           planConfig?.id   ?? '',
+    priceUSD:         planConfig?.priceUSD ?? 0,
+    subscriptionId:   subscription.id,
+    requiresPayment:  !!clientSecret,
+    status:           subscription.status,
+  };
+}
+
+private async activateSubscriptionInDb(
+  userId:       string,
+  subscription: Stripe.Subscription,
+  dto:          CreateIntentDto,
+  customerId:   string,
+  stripePriceId: string,
+): Promise<void> {
+  const sub_any    = subscription as any;
+  const periodEnd  = sub_any.current_period_end
+    ? new Date(sub_any.current_period_end * 1000) : null;
+  const periodStart = sub_any.current_period_start
+    ? new Date(sub_any.current_period_start * 1000) : new Date();
+  const planFor    = dto.planFor ?? 'user';
+
+  await this.prisma.subscription.upsert({
+    where:  { userId },
+    create: {
+      userId,
+      plan:                 dto.plan as SubscriptionPlan,
+      status:               SubscriptionStatus.ACTIVE,
+      stripeCustomerId:     customerId,
+      stripeSubscriptionId: subscription.id,
+      stripePriceId,
+      currentPeriodStart:   periodStart,
+      currentPeriodEnd:     periodEnd,
+      cancelAtPeriodEnd:    false,
+      isCoachPremium:       planFor === 'coach',
+      maxClients:           planFor === 'coach' ? 999 : 0,
+    },
+    update: {
+      status:               SubscriptionStatus.ACTIVE,
+      stripeSubscriptionId: subscription.id,
+      currentPeriodStart:   periodStart,
+      currentPeriodEnd:     periodEnd,
+      cancelAtPeriodEnd:    false,
+    },
+  });
+
+  await this.prisma.user.update({
+    where: { id: userId },
+    data:  { isPremium: true, premiumUntil: periodEnd },
+  });
+}
 
 
  
