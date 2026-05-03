@@ -1394,6 +1394,10 @@ enum BFRBodyType {
 
 enum ResearchCategory {
   BASIC
+  SAFETY
+  PROGRAMMING
+  RECOVERY
+  REHAB
   ADVANCED
   DETAIL
 }
