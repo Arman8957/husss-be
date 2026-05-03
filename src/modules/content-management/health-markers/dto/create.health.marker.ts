@@ -10,7 +10,7 @@ export class CreateHealthMarkerDto {
     })
     @IsString()
     @Transform(({ value }) => value?.trim())
-    title: string;
+    title!: string;
 
     @ApiProperty({
         example: ["High BP", "Low BP", "Normal BP"],
@@ -24,5 +24,5 @@ export class CreateHealthMarkerDto {
         if (typeof value === "string") return [value];
         return value;
     })
-    details: string[];
+    details!: string[];
 }
