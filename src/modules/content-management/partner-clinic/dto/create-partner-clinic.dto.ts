@@ -33,10 +33,10 @@ export class CreatePartnerClinicDto {
   @IsString()
   closeTime?: string;
   
-  @ApiPropertyOptional({ example: 'https://www.partnerclinic.com/purchase' })
+  @ApiPropertyOptional({ example: 'https://www.partnerclinic.com/booking' })
   @IsOptional()
   @IsUrl()
-  purchasePageUrl?: string;
+  bookingUrl?: string;
 
   @ApiPropertyOptional({ default: true })
   @IsOptional()

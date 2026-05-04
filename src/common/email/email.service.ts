@@ -395,12 +395,12 @@ export class EmailService {
 
   async sendPasswordOtpEmail(
     email: string,
-    name:  string,
-    otp:   string,
+    name: string,
+    otp: string,
   ): Promise<boolean> {
     return this.sendEmail({
-      from:    this.configService.get('smtp.from'),
-      to:      email,
+      from: this.configService.get('smtp.from'),
+      to: email,
       subject: '🔐 Your HUSSS Password Reset Code',
       html: `
         <!DOCTYPE html><html><head><style>
@@ -456,7 +456,6 @@ export class EmailService {
       text: `Your HUSSS password reset OTP: ${otp}\n\nExpires in 10 minutes. Do not share this code.\n\nIf you didn't request this, ignore this email.`,
     });
   }
- 
 
   // ─── Trainee restricted / unrestricted ───────────────────────────────────
   /** Coach receives email when a client submits their PAR-Q */
@@ -639,6 +638,377 @@ export class EmailService {
         ? `Your HUSSS access was restricted by ${coachName}. ${reason ?? 'Contact your coach.'}`
         : `Your HUSSS access was restored by ${coachName}. You can now book sessions.`,
     });
+  }
+  async sendClientCancelledConnectionEmail(
+    coachEmail: string,
+    coachName: string,
+    clientName: string,
+    clientEmail: string,
+    reason: string | null,
+    dashboardUrl: string,
+  ): Promise<boolean> {
+    try {
+      const reasonBlock = reason
+        ? `<p style="margin:0 0 16px"><strong>Reason given:</strong> ${reason}</p>`
+        : '';
+
+      const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Client Left Your Roster</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0"
+               style="background:#ffffff;border-radius:12px;overflow:hidden;
+                      box-shadow:0 2px 8px rgba(0,0,0,.08);max-width:600px;width:100%;">
+ 
+          <!-- Header -->
+          <tr>
+            <td style="background:#1a1a1a;padding:32px 40px;text-align:center;">
+              <span style="font-size:28px;font-weight:800;color:#E5B94B;
+                           letter-spacing:-0.5px;">HUSSS</span>
+              <p style="margin:8px 0 0;color:#888;font-size:13px;">
+                Fitness Coaching Platform
+              </p>
+            </td>
+          </tr>
+ 
+          <!-- Icon row -->
+          <tr>
+            <td style="padding:40px 40px 0;text-align:center;">
+              <div style="font-size:48px;margin-bottom:16px;">👋</div>
+              <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1a1a1a;">
+                A Client Has Left Your Roster
+              </h1>
+              <p style="margin:0 0 24px;color:#666;font-size:15px;line-height:1.6;">
+                Hi ${coachName}, we wanted to let you know that one of your
+                clients has cancelled their coaching connection.
+              </p>
+            </td>
+          </tr>
+ 
+          <!-- Details card -->
+          <tr>
+            <td style="padding:0 40px;">
+              <table width="100%" cellpadding="0" cellspacing="0"
+                     style="background:#f8f8f8;border-radius:10px;padding:0;">
+                <tr>
+                  <td style="padding:24px;">
+                    <p style="margin:0 0 12px;font-size:13px;font-weight:600;
+                               color:#888;text-transform:uppercase;letter-spacing:0.5px;">
+                      Client Details
+                    </p>
+                    <p style="margin:0 0 8px;font-size:16px;font-weight:700;color:#1a1a1a;">
+                      ${clientName}
+                    </p>
+                    <p style="margin:0 0 16px;font-size:14px;color:#666;">
+                      ${clientEmail}
+                    </p>
+                    ${reasonBlock}
+                    <p style="margin:0;font-size:13px;color:#999;">
+                      All pending and confirmed sessions have been automatically cancelled
+                      and your availability slots have been freed.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+ 
+          <!-- CTA -->
+          <tr>
+            <td style="padding:32px 40px;text-align:center;">
+              <a href="${dashboardUrl}"
+                 style="display:inline-block;background:#E5B94B;color:#000;
+                        font-weight:700;font-size:15px;text-decoration:none;
+                        padding:14px 32px;border-radius:8px;">
+                View Your Dashboard
+              </a>
+            </td>
+          </tr>
+ 
+          <!-- Footer -->
+          <tr>
+            <td style="background:#f8f8f8;padding:24px 40px;text-align:center;
+                       border-top:1px solid #eee;">
+              <p style="margin:0;color:#aaa;font-size:12px;line-height:1.6;">
+                This is an automated notification from HUSSS.<br>
+                If you have questions, please contact support.
+              </p>
+            </td>
+          </tr>
+ 
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+      await this.sendEmail({
+        // ← replace with your actual mailer call
+        to: coachEmail,
+        subject: `${clientName} has left your coaching roster`,
+        html,
+      });
+
+      return true;
+    } catch (err) {
+      this.logger.error('sendClientCancelledConnectionEmail failed:', err);
+      return false;
+    }
+  }
+
+  async sendInvitationDeclinedEmail(
+    coachEmail: string,
+    coachName: string,
+    clientName: string,
+    clientEmail: string,
+    reason: string | null,
+    dashboardUrl: string,
+  ): Promise<boolean> {
+    try {
+      const reasonBlock = reason
+        ? `<p style="margin:0 0 16px"><strong>Reason:</strong> ${reason}</p>`
+        : '';
+
+      const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invitation Declined</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0"
+               style="background:#ffffff;border-radius:12px;overflow:hidden;
+                      box-shadow:0 2px 8px rgba(0,0,0,.08);max-width:600px;width:100%;">
+ 
+          <tr>
+            <td style="background:#1a1a1a;padding:32px 40px;text-align:center;">
+              <span style="font-size:28px;font-weight:800;color:#E5B94B;">HUSSS</span>
+              <p style="margin:8px 0 0;color:#888;font-size:13px;">Fitness Coaching Platform</p>
+            </td>
+          </tr>
+ 
+          <tr>
+            <td style="padding:40px 40px 0;text-align:center;">
+              <div style="font-size:48px;margin-bottom:16px;">❌</div>
+              <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1a1a1a;">
+                Your Invitation Was Declined
+              </h1>
+              <p style="margin:0 0 24px;color:#666;font-size:15px;line-height:1.6;">
+                Hi ${coachName}, someone has declined your coaching invitation.
+              </p>
+            </td>
+          </tr>
+ 
+          <tr>
+            <td style="padding:0 40px;">
+              <table width="100%" cellpadding="0" cellspacing="0"
+                     style="background:#f8f8f8;border-radius:10px;">
+                <tr>
+                  <td style="padding:24px;">
+                    <p style="margin:0 0 12px;font-size:13px;font-weight:600;
+                               color:#888;text-transform:uppercase;letter-spacing:0.5px;">
+                      Details
+                    </p>
+                    <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#1a1a1a;">
+                      ${clientName}
+                    </p>
+                    <p style="margin:0 0 16px;font-size:14px;color:#666;">
+                      ${clientEmail}
+                    </p>
+                    ${reasonBlock}
+                    <p style="margin:0;font-size:13px;color:#999;">
+                      You can generate a new invitation link from your dashboard
+                      and send it to someone else.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+ 
+          <tr>
+            <td style="padding:32px 40px;text-align:center;">
+              <a href="${dashboardUrl}"
+                 style="display:inline-block;background:#E5B94B;color:#000;
+                        font-weight:700;font-size:15px;text-decoration:none;
+                        padding:14px 32px;border-radius:8px;">
+                Go to Dashboard
+              </a>
+            </td>
+          </tr>
+ 
+          <tr>
+            <td style="background:#f8f8f8;padding:24px 40px;text-align:center;
+                       border-top:1px solid #eee;">
+              <p style="margin:0;color:#aaa;font-size:12px;line-height:1.6;">
+                This is an automated notification from HUSSS.
+              </p>
+            </td>
+          </tr>
+ 
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+      await this.sendEmail({
+        to: coachEmail,
+        subject: `${clientName} declined your coaching invitation`,
+        html,
+      });
+
+      return true;
+    } catch (err) {
+      this.logger.error('sendInvitationDeclinedEmail failed:', err);
+      return false;
+    }
+  }
+  async sendSessionCancelledByClientEmail(
+    coachEmail: string,
+    coachName: string,
+    clientName: string,
+    scheduledAt: Date,
+    reason: string | null,
+    dashboardUrl: string,
+  ): Promise<boolean> {
+    try {
+      const formattedDate = scheduledAt.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      const formattedTime = scheduledAt.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      const reasonBlock = reason
+        ? `<p style="margin:0 0 0"><strong>Reason:</strong> ${reason}</p>`
+        : '';
+
+      const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Session Cancelled</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0"
+               style="background:#fff;border-radius:12px;overflow:hidden;
+                      box-shadow:0 2px 8px rgba(0,0,0,.08);max-width:600px;width:100%;">
+ 
+          <tr>
+            <td style="background:#1a1a1a;padding:32px 40px;text-align:center;">
+              <span style="font-size:28px;font-weight:800;color:#E5B94B;">HUSSS</span>
+              <p style="margin:8px 0 0;color:#888;font-size:13px;">Fitness Coaching Platform</p>
+            </td>
+          </tr>
+ 
+          <tr>
+            <td style="padding:40px 40px 0;text-align:center;">
+              <div style="font-size:48px;margin-bottom:16px;">📅</div>
+              <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1a1a1a;">
+                Session Cancelled
+              </h1>
+              <p style="margin:0 0 24px;color:#666;font-size:15px;line-height:1.6;">
+                Hi ${coachName}, a client has cancelled an upcoming session.
+              </p>
+            </td>
+          </tr>
+ 
+          <tr>
+            <td style="padding:0 40px;">
+              <table width="100%" cellpadding="0" cellspacing="0"
+                     style="background:#f8f8f8;border-radius:10px;">
+                <tr>
+                  <td style="padding:24px;">
+                    <p style="margin:0 0 12px;font-size:13px;font-weight:600;
+                               color:#888;text-transform:uppercase;letter-spacing:0.5px;">
+                      Session Details
+                    </p>
+                    <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#1a1a1a;">
+                      ${clientName}
+                    </p>
+                    <p style="margin:0 0 4px;font-size:14px;color:#666;">
+                      ${formattedDate}
+                    </p>
+                    <p style="margin:0 0 16px;font-size:14px;color:#666;">
+                      ${formattedTime}
+                    </p>
+                    ${reasonBlock}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+ 
+          <tr>
+            <td style="padding:16px 40px 0;text-align:center;">
+              <p style="margin:0;font-size:13px;color:#999;">
+                This time slot has been freed and is available for new bookings.
+              </p>
+            </td>
+          </tr>
+ 
+          <tr>
+            <td style="padding:24px 40px 32px;text-align:center;">
+              <a href="${dashboardUrl}"
+                 style="display:inline-block;background:#E5B94B;color:#000;
+                        font-weight:700;font-size:15px;text-decoration:none;
+                        padding:14px 32px;border-radius:8px;">
+                View Dashboard
+              </a>
+            </td>
+          </tr>
+ 
+          <tr>
+            <td style="background:#f8f8f8;padding:24px 40px;text-align:center;
+                       border-top:1px solid #eee;">
+              <p style="margin:0;color:#aaa;font-size:12px;line-height:1.6;">
+                This is an automated notification from HUSSS.
+              </p>
+            </td>
+          </tr>
+ 
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+      await this.sendEmail({
+        to: coachEmail,
+        subject: `${clientName} cancelled their session on ${formattedDate}`,
+        html,
+      });
+
+      return true;
+    } catch (err) {
+      this.logger.error('sendSessionCancelledByClientEmail failed:', err);
+      return false;
+    }
   }
 
   // ─── Private helper ───────────────────────────────────────────────────────

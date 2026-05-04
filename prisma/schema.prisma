@@ -1157,6 +1157,7 @@ model HealthClinicChecker {
 model PartnerClinic {
   id            String   @id @default(cuid())
   name          String
+  purchasePageUrl  String?
   description   String?
   address       String
   city          String
