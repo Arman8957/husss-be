@@ -29,6 +29,7 @@ import { PaymentModule } from './modules/subscription/stripe/stripe.module';
 import { SubscriptionPlansModule } from './modules/subscription/subscriptionsPlan/subscriptionsPlan.module';
 import { TrainingMethodsModule } from './modules/programs/training-method/training-methods.module';
 import { CompaireProgramModule } from './modules/compaire-program/compaire-program.module';
+import { FreestyleModule } from './modules/freestyle/freestyle.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { CompaireProgramModule } from './modules/compaire-program/compaire-progr
     SubscriptionPlansModule,
     TrainingMethodsModule,
     CompaireProgramModule,
+    FreestyleModule
   ],
   providers: [
     {
