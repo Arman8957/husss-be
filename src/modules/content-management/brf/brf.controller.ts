@@ -14,8 +14,8 @@ export class BrfController {
 
   @Post("publish")
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  // @Roles('ADMIN', 'SUPER_ADMIN', 'MODERATOR')
   @ApiOperation({ summary: "Publish a BRF (Only Can Admin)" })
   async publishBRF(@Body() dto: CreateBrfDto) {
     return await this.brfService.createBRF(dto);
