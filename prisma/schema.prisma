@@ -585,7 +585,7 @@ model TrainingMethod {
   id          String             @id @default(cuid())
   name        String             @unique // "5x5", "Max-OT", etc.
   type        TrainingMethodType
-  label       String?             @unique
+  label       String?            @unique
   description String
   setsInfo    String? // "5 sets of 5 heavy reps"
   repRange    String? // "4-6"
@@ -1155,27 +1155,27 @@ model HealthClinicChecker {
 // ══════════════════════════════════════════════════════════════
 
 model PartnerClinic {
-  id            String   @id @default(cuid())
-  name          String
-  purchasePageUrl  String?
-  description   String?
-  address       String
-  city          String
-  country       String
-  phone         String?
-  email         String?
-  website       String?
-  bookingUrl    String?
-  imageUrl      String?
-  distanceMiles Float?
-  openingHours  String? // "8:00 AM 
-  closeTime     String? // 6:00 PM"
-  isActive      Boolean  @default(true)
-  sortOrder     Int      @default(0)
-  latitude      Float?
-  longitude     Float?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String   @id @default(cuid())
+  name            String
+  purchasePageUrl String?
+  description     String?
+  address         String
+  city            String
+  country         String
+  phone           String?
+  email           String?
+  website         String?
+  bookingUrl      String?
+  imageUrl        String?
+  distanceMiles   Float?
+  openingHours    String? // "8:00 AM 
+  closeTime       String? // 6:00 PM"
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  latitude        Float?
+  longitude       Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([country, city])
   @@map("partner_clinics")
@@ -1385,6 +1385,9 @@ enum BFRSessionCategory {
   STRENGTH
   ENDURANCE
   RECOVERY
+  CONDITIONING
+  REHAB_STYLE
+  DELOAD
 }
 
 enum BFRBodyType {
