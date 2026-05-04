@@ -422,3 +422,11 @@ export class RestrictTraineeDto {
   @MaxLength(500)
   reason?: string; // shown in email + in-app notification
 }
+
+
+export class CancelCoachConnectionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}

@@ -266,10 +266,6 @@ export class CoachController {
       query,
     );
   }
-
-
-
-  
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -383,34 +379,37 @@ export class ClientCoachController {
   //   return { upcomingSessions: info.upcomingSessions };
   // }
 
-    @Get('reminders')
+  @Get('reminders')
   async getReminders(@CurrentUser() user: any) {
     const info = await this.coachService.getMyCoachInfo(user.id);
     return {
       upcomingSessions: info.upcomingSessions.map((s: any) => ({
-        id:              s.id,
-        status:          s.status,
-        sessionType:     s.sessionType,
-        scheduledAt:     s.scheduledAt,
+        id: s.id,
+        status: s.status,
+        sessionType: s.sessionType,
+        scheduledAt: s.scheduledAt,
         durationMinutes: s.durationMinutes,
-        notes:           s.notes,
-        confirmedAt:     s.confirmedAt,
-        startTime:       s.availability?.startTime  ?? null,
-        endTime:         s.availability?.endTime    ?? null,
-    
-        coachName:       s.coach?.user?.name        ?? null,
-        coachAvatar:     s.coach?.user?.avatar      ?? null,
+        notes: s.notes,
+        confirmedAt: s.confirmedAt,
+        startTime: s.availability?.startTime ?? null,
+        endTime: s.availability?.endTime ?? null,
+
+        coachName: s.coach?.user?.name ?? null,
+        coachAvatar: s.coach?.user?.avatar ?? null,
         // venue info
-        gymName:         s.availability?.gymName    ?? s.coach?.gymName    ?? null,
-        location:        s.availability?.location   ?? s.coach?.gymLocation ?? null,
+        gymName: s.availability?.gymName ?? s.coach?.gymName ?? null,
+        location: s.availability?.location ?? s.coach?.gymLocation ?? null,
       })),
       // summary counts
-      total:     info.upcomingSessions.length,
-      confirmed: info.upcomingSessions.filter((s: any) => s.status === 'CONFIRMED').length,
-      requested: info.upcomingSessions.filter((s: any) => s.status === 'REQUESTED').length,
+      total: info.upcomingSessions.length,
+      confirmed: info.upcomingSessions.filter(
+        (s: any) => s.status === 'CONFIRMED',
+      ).length,
+      requested: info.upcomingSessions.filter(
+        (s: any) => s.status === 'REQUESTED',
+      ).length,
     };
   }
- 
 
   /** GET /api/v1/client/reminders/preferences */
   @Get('reminders/preferences')
@@ -484,5 +483,28 @@ export class PublicCoachController {
     @Body() dto: AcceptInvitationDto,
   ) {
     return this.coachService.acceptInvitation(dto, user.id);
+  }
+
+  @Delete('coach-connection')
+  @HttpCode(HttpStatus.OK)
+  cancelCoachConnection(
+    @CurrentUser() user: any,
+    @Body() body: { reason?: string } = {},
+  ) {
+    return this.coachService.cancelCoachConnection(user.id, body.reason);
+  }
+
+  @Delete('invitations/:invitationId/cancel')
+  @HttpCode(HttpStatus.OK)
+  cancelInvitation(
+    @CurrentUser() user: any,
+    @Param('invitationId') invitationId: string,
+    @Body() body: { reason?: string } = {},
+  ) {
+    return this.coachService.cancelInvitationByClient(
+      user.id,
+      invitationId,
+      body?.reason,
+    );
   }
 }

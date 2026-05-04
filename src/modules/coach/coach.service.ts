@@ -1537,6 +1537,309 @@ export class CoachService {
       day: 'numeric',
     });
   }
+
+  async cancelCoachConnection(clientUserId: string, reason?: string) {
+  // ── 1. Resolve client profile ─────────────────────────────────────────
+  const clientProfile = await this.prisma.clientProfile.findUnique({
+    where: { userId: clientUserId },
+    include: {
+      user: { select: { id: true, name: true, email: true } },
+      coach: {
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+      },
+    },
+  });
+ 
+  if (!clientProfile) {
+    throw new NotFoundException(
+      'No coach connection found. You are not currently connected to a coach.',
+    );
+  }
+ 
+  if (clientProfile.status === 'INACTIVE') {
+    throw new ConflictException(
+      'Your coach connection is already inactive.',
+    );
+  }
+ 
+  // ── 2. Run everything in a single atomic transaction ──────────────────
+  await this.prisma.$transaction(async (tx) => {
+    // 2a. Mark client as INACTIVE
+    await tx.clientProfile.update({
+      where: { id: clientProfile.id },
+      data: { status: 'INACTIVE' as any },
+    });
+ 
+    // 2b. Decrement coach's active client count
+    await tx.coachProfile.update({
+      where: { id: clientProfile.coachId },
+      data: { totalClients: { decrement: 1 } },
+    });
+ 
+    // 2c. Cancel all open sessions and free availability slots
+    const openSessions = await tx.coachSession.findMany({
+      where: {
+        clientProfileId: clientProfile.id,
+        status: { in: ['REQUESTED', 'CONFIRMED'] },
+      },
+      select: { id: true, availabilityId: true },
+    });
+ 
+    if (openSessions.length > 0) {
+      // Cancel sessions
+      await tx.coachSession.updateMany({
+        where: { id: { in: openSessions.map((s) => s.id) } },
+        data: { status: 'CANCELLED' as any, cancelledAt: new Date() },
+      });
+ 
+      // Free booked availability slots
+      const slotIds = openSessions
+        .map((s) => s.availabilityId)
+        .filter((id): id is string => id !== null);
+ 
+      if (slotIds.length > 0) {
+        await tx.coachAvailability.updateMany({
+          where: { id: { in: slotIds } },
+          data: { isBooked: false },
+        });
+      }
+    }
+ 
+    // 2d. In-app notification → coach
+    await tx.notification.create({
+      data: {
+        userId: clientProfile.coach.user.id,
+        type: 'SYSTEM' as any,
+        title: '👋 Client Left',
+        body: `${clientProfile.user.name ?? 'A client'} has cancelled their coaching connection.${reason ? ` Reason: ${reason}` : ''}`,
+        data: {
+          clientProfileId: clientProfile.id,
+          clientName: clientProfile.user.name,
+          cancelledSessionsCount: openSessions.length,
+        },
+      },
+    });
+  });
+ 
+  // ── 3. Email coach (fire-and-forget — never throws) ───────────────────
+  const dashboardUrl = `${process.env.APP_BASE_URL ?? 'https://app.monsterconfusion.com'}/coach/dashboard`;
+ 
+  this.emailService
+    .sendClientCancelledConnectionEmail(
+      clientProfile.coach.user.email,
+      clientProfile.coach.user.name ?? 'Coach',
+      clientProfile.user.name ?? 'A client',
+      clientProfile.user.email,
+      reason ?? null,
+      dashboardUrl,
+    )
+    .catch((err) =>
+      this.logger.error('Failed to send client-cancelled-connection email:', err),
+    );
+ 
+  return {
+    success: true,
+    message: 'You have successfully cancelled your coaching connection.',
+    coachName: clientProfile.coach.user.name,
+  };
+}
+
+
+async cancelInvitationByClient(clientUserId: string, invitationId: string, reason?: string) {
+ 
+  // ── Resolve the invitation ───────────────────────────────────────────────
+  const invitation = await this.prisma.coachInvitation.findUnique({
+    where: { id: invitationId },
+    include: {
+      coach: {
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+      },
+    },
+  });
+ 
+  if (!invitation) {
+    throw new NotFoundException('Invitation not found.');
+  }
+ 
+  // ── Resolve the client user ──────────────────────────────────────────────
+  const clientUser = await this.prisma.user.findUnique({
+    where: { id: clientUserId },
+    select: { id: true, name: true, email: true },
+  });
+  if (!clientUser) throw new NotFoundException('Client user not found.');
+ 
+  // ── CASE 1: Client already accepted this specific invitation ─────────────
+  // usedBy === clientUserId means this client used this exact invite
+  if (invitation.isUsed && invitation.usedBy === clientUserId) {
+ 
+    const clientProfile = await this.prisma.clientProfile.findFirst({
+      where: {
+        userId: clientUserId,
+        invitationId: invitation.id,   // ← tied to this specific invitation
+      },
+    });
+ 
+    if (!clientProfile) {
+      throw new NotFoundException(
+        'No active connection found for this invitation.',
+      );
+    }
+ 
+    if (clientProfile.status === 'INACTIVE') {
+      throw new ConflictException(
+        'This coaching connection is already inactive.',
+      );
+    }
+ 
+    // Cancel everything atomically
+    await this.prisma.$transaction(async (tx) => {
+ 
+      // 1. Set ClientProfile → INACTIVE
+      await tx.clientProfile.update({
+        where: { id: clientProfile.id },
+        data: { status: 'INACTIVE' as any },
+      });
+ 
+      // 2. Decrement coach client count
+      await tx.coachProfile.update({
+        where: { id: clientProfile.coachId },
+        data: { totalClients: { decrement: 1 } },
+      });
+ 
+      // 3. Cancel all open sessions + free slots
+      const openSessions = await tx.coachSession.findMany({
+        where: {
+          clientProfileId: clientProfile.id,
+          status: { in: ['REQUESTED', 'CONFIRMED'] },
+        },
+        select: { id: true, availabilityId: true },
+      });
+ 
+      if (openSessions.length > 0) {
+        await tx.coachSession.updateMany({
+          where: { id: { in: openSessions.map((s) => s.id) } },
+          data: { status: 'CANCELLED' as any, cancelledAt: new Date() },
+        });
+ 
+        const slotIds = openSessions
+          .map((s) => s.availabilityId)
+          .filter((id): id is string => id !== null);
+ 
+        if (slotIds.length > 0) {
+          await tx.coachAvailability.updateMany({
+            where: { id: { in: slotIds } },
+            data: { isBooked: false },
+          });
+        }
+      }
+ 
+      // 4. In-app notification → coach
+      await tx.notification.create({
+        data: {
+          userId: invitation.coach.user.id,
+          type: 'SYSTEM' as any,
+          title: '👋 Client Cancelled Connection',
+          body: `${clientUser.name ?? 'A client'} has cancelled their coaching connection.${reason ? ` Reason: ${reason}` : ''}`,
+          data: {
+            clientProfileId: clientProfile.id,
+            clientUserId,
+            invitationId: invitation.id,
+            cancelledSessionsCount: openSessions.length,
+          },
+        },
+      });
+    });
+ 
+    // Email coach — fire and forget
+    const dashboardUrl = `${process.env.APP_BASE_URL ?? 'https://app.monsterconfusion.com'}/coach/dashboard`;
+    this.emailService
+      .sendClientCancelledConnectionEmail(
+        invitation.coach.user.email,
+        invitation.coach.user.name ?? 'Coach',
+        clientUser.name ?? 'A client',
+        clientUser.email,
+        reason ?? null,
+        dashboardUrl,
+      )
+      .catch((err) =>
+        this.logger.error('Failed to send cancellation email to coach:', err),
+      );
+ 
+    return {
+      success: true,
+      type: 'CONNECTION_CANCELLED',
+      message: 'You have successfully cancelled your coaching connection.',
+      coachName: invitation.coach.user.name,
+    };
+  }
+ 
+  // ── CASE 2: Invitation not yet accepted — client rejects it ──────────────
+  if (!invitation.isUsed) {
+ 
+    // Verify invitation hasn't expired already
+    if (invitation.expiresAt < new Date()) {
+      throw new BadRequestException(
+        'This invitation has already expired.',
+      );
+    }
+ 
+    // Mark invitation as used so nobody (including this client) can accept it
+    await this.prisma.coachInvitation.update({
+      where: { id: invitationId },
+      data: {
+        isUsed: true,
+        usedBy: clientUserId,   // record who declined it
+      },
+    });
+ 
+    // In-app notification → coach
+    await this.prisma.notification.create({
+      data: {
+        userId: invitation.coach.user.id,
+        type: 'SYSTEM' as any,
+        title: '❌ Invitation Declined',
+        body: `${clientUser.name ?? 'Someone'} (${clientUser.email}) declined your coaching invitation.${reason ? ` Reason: ${reason}` : ''}`,
+        data: {
+          invitationId: invitation.id,
+          clientUserId,
+          code: invitation.code,
+        },
+      },
+    });
+ 
+    // Email coach — fire and forget
+    const dashboardUrl = `${process.env.APP_BASE_URL ?? 'https://app.monsterconfusion.com'}/coach/dashboard`;
+    this.emailService
+      .sendInvitationDeclinedEmail(
+        invitation.coach.user.email,
+        invitation.coach.user.name ?? 'Coach',
+        clientUser.name ?? 'Someone',
+        clientUser.email,
+        reason ?? null,
+        dashboardUrl,
+      )
+      .catch((err) =>
+        this.logger.error('Failed to send invitation-declined email:', err),
+      );
+ 
+    return {
+      success: true,
+      type: 'INVITATION_DECLINED',
+      message: 'Invitation declined. The coach has been notified.',
+      coachName: invitation.coach.user.name,
+    };
+  }
+ 
+  // ── CASE 3: Invitation was used by someone ELSE ──────────────────────────
+  throw new ForbiddenException(
+    'This invitation was not issued to you or has already been used by another user.',
+  );
+}
+ 
 }
 
 // import {
