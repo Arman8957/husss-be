@@ -1383,9 +1383,6 @@ enum BFRContentCategory {
 
 enum BFRSessionCategory {
   HYPERTROPHY
-  REHAB_STYLE
-  CONDITIONING
-  DELOAD
   STRENGTH
   ENDURANCE
   RECOVERY
