@@ -12,6 +12,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { CoachService } from './coach.service';
 import { UserRole } from '@prisma/client';
@@ -38,6 +39,7 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { ApiOperation } from '@nestjs/swagger';
 
 // ════════════════════════════════════════════════════════════════════════════
 // COACH ROUTES  /coach/...   (role: COACH)
@@ -340,6 +342,24 @@ export class ClientCoachController {
   ) {
     return this.coachService.confirmSessionBooking(user.id, availabilityId);
   }
+  //=======================
+  @Patch('sessions/:sessionId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Client cancels a session' })
+  cancelSession(
+    @CurrentUser() user: any,
+    @Param('sessionId') sessionId: string,
+    @Body() body: { reason?: string } = {},
+  ) {
+    if (!user?.id) {
+      throw new UnauthorizedException('User not authenticated');
+    }
+    return this.coachService.cancelSessionByClient(
+      user.id,
+      sessionId,
+      body?.reason,
+    );
+  }
 
   // Body Dimensions
   /** POST /api/v1/client/body-dimensions */
@@ -425,6 +445,20 @@ export class ClientCoachController {
   ) {
     return this.coachService.updateReminderPreferences(user.id, dto);
   }
+
+  @Delete('invitations/:invitationId/cancel')
+  @HttpCode(HttpStatus.OK)
+  cancelInvitation(
+    @CurrentUser() user: any,
+    @Param('invitationId') invitationId: string,
+    @Body() body: { reason?: string } = {},
+  ) {
+    return this.coachService.cancelInvitationByClient(
+      user.id,
+      invitationId,
+      body?.reason,
+    );
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -492,33 +526,5 @@ export class PublicCoachController {
     @Body() body: { reason?: string } = {},
   ) {
     return this.coachService.cancelCoachConnection(user.id, body.reason);
-  }
-
-  @Delete('invitations/:invitationId/cancel')
-  @HttpCode(HttpStatus.OK)
-  cancelInvitation(
-    @CurrentUser() user: any,
-    @Param('invitationId') invitationId: string,
-    @Body() body: { reason?: string } = {},
-  ) {
-    return this.coachService.cancelInvitationByClient(
-      user.id,
-      invitationId,
-      body?.reason,
-    );
-  }
-
-  @Patch('sessions/:sessionId/cancel')
-  @HttpCode(HttpStatus.OK)
-  cancelSession(
-    @CurrentUser() user: any,
-    @Param('sessionId') sessionId: string,
-    @Body() body: { reason?: string } = {},
-  ) {
-    return this.coachService.cancelSessionByClient(
-      user.id,
-      sessionId,
-      body?.reason,
-    );
   }
 }
