@@ -507,4 +507,18 @@ export class PublicCoachController {
       body?.reason,
     );
   }
+
+  @Patch('sessions/:sessionId/cancel')
+  @HttpCode(HttpStatus.OK)
+  cancelSession(
+    @CurrentUser() user: any,
+    @Param('sessionId') sessionId: string,
+    @Body() body: { reason?: string } = {},
+  ) {
+    return this.coachService.cancelSessionByClient(
+      user.id,
+      sessionId,
+      body?.reason,
+    );
+  }
 }
