@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsUrl } from 'class-validator';
 
 export class CreatePartnerClinicDto {
   @ApiProperty()
@@ -32,6 +32,11 @@ export class CreatePartnerClinicDto {
   @IsOptional()
   @IsString()
   closeTime?: string;
+  
+  @ApiPropertyOptional({ example: 'https://www.partnerclinic.com/purchase' })
+  @IsOptional()
+  @IsUrl()
+  purchasePageUrl?: string;
 
   @ApiPropertyOptional({ default: true })
   @IsOptional()
