@@ -1168,7 +1168,6 @@ model PartnerClinic {
   bookingUrl    String?
   imageUrl      String?
   distanceMiles Float?
-  purchasePageUrl String?
   openingHours  String? // "8:00 AM 
   closeTime     String? // 6:00 PM"
   isActive      Boolean  @default(true)
